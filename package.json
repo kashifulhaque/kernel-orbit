@@ -4,6 +4,10 @@
   "description": "Kernel Orbit lets you run CUDA and Triton kernels on modal.com with GPU selection, benchmarking, and profiling",
   "version": "0.0.1",
   "publisher": "your-publisher-name",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kashifulhaque/kernel-orbit"
+  },
   "engines": {
     "vscode": "^1.108.1"
   },
