@@ -1,0 +1,74 @@
+name: Build and Release VS Code Extension
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install vsce
+        run: npm install -g @vscode/vsce
+
+      - name: Get package version
+        id: package_version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Extension version: $VERSION"
+
+      - name: Get extension name
+        id: extension_name
+        run: |
+          NAME=$(node -p "require('./package.json').name")
+          echo "name=$NAME" >> $GITHUB_OUTPUT
+          echo "Extension name: $NAME"
+
+      - name: Package extension
+        run: vsce package --out "${{ steps.extension_name.outputs.name }}-${{ steps.package_version.outputs.version }}.vsix"
+
+      - name: Get commit short SHA
+        id: commit_sha
+        run: echo "sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.package_version.outputs.version }}-${{ steps.commit_sha.outputs.sha }}
+          name: Release v${{ steps.package_version.outputs.version }}
+          body: |
+            ## Kernel Orbit v${{ steps.package_version.outputs.version }}
+            
+            Automated release from commit ${{ github.sha }}
+            
+            ### Installation
+            1. Download the `.vsix` file below
+            2. In VS Code, open Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`)
+            3. Run `Extensions: Install from VSIX...`
+            4. Select the downloaded file
+            
+            ### Changes
+            See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details.
+          files: |
+            ${{ steps.extension_name.outputs.name }}-${{ steps.package_version.outputs.version }}.vsix
+          draft: false
+          prerelease: false
+          generate_release_notes: true
