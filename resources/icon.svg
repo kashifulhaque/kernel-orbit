@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a1a2e"/>
+      <stop offset="100%" style="stop-color:#16213e"/>
+    </linearGradient>
+    <linearGradient id="orbit" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#76b900"/>
+      <stop offset="100%" style="stop-color:#00d4ff"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="128" height="128" rx="16" fill="url(#bg)"/>
+  
+  <!-- Orbit rings -->
+  <ellipse cx="64" cy="64" rx="45" ry="20" fill="none" stroke="url(#orbit)" stroke-width="2" opacity="0.6" transform="rotate(-20 64 64)"/>
+  <ellipse cx="64" cy="64" rx="45" ry="20" fill="none" stroke="url(#orbit)" stroke-width="2" opacity="0.6" transform="rotate(40 64 64)"/>
+  <ellipse cx="64" cy="64" rx="45" ry="20" fill="none" stroke="url(#orbit)" stroke-width="2" opacity="0.6" transform="rotate(100 64 64)"/>
+  
+  <!-- GPU core (center) -->
+  <rect x="44" y="44" width="40" height="40" rx="4" fill="#76b900"/>
+  <rect x="50" y="50" width="28" height="28" rx="2" fill="#1a1a2e"/>
+  
+  <!-- Grid pattern on GPU -->
+  <g fill="#76b900" opacity="0.8">
+    <rect x="53" y="53" width="5" height="5"/>
+    <rect x="61" y="53" width="5" height="5"/>
+    <rect x="69" y="53" width="5" height="5"/>
+    <rect x="53" y="61" width="5" height="5"/>
+    <rect x="61" y="61" width="5" height="5"/>
+    <rect x="69" y="61" width="5" height="5"/>
+    <rect x="53" y="69" width="5" height="5"/>
+    <rect x="61" y="69" width="5" height="5"/>
+    <rect x="69" y="69" width="5" height="5"/>
+  </g>
+  
+  <!-- Orbiting particles -->
+  <circle cx="109" cy="64" r="5" fill="#00d4ff"/>
+  <circle cx="38" cy="30" r="4" fill="#76b900"/>
+  <circle cx="90" cy="98" r="4" fill="#ff6b6b"/>
+</svg>
