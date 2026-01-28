@@ -1,0 +1,215 @@
+{
+  "name": "modal-cuda-kernel-runner",
+  "displayName": "Modal CUDA Kernel Runner",
+  "description": "Run CUDA and Triton kernels on Modal.com with GPU selection, benchmarking, and profiling",
+  "version": "0.0.1",
+  "publisher": "your-publisher-name",
+  "engines": {
+    "vscode": "^1.108.1"
+  },
+  "icon": "resources/icon.png",
+  "categories": [
+    "Other",
+    "Machine Learning",
+    "Programming Languages"
+  ],
+  "keywords": [
+    "cuda",
+    "triton",
+    "gpu",
+    "modal",
+    "kernel",
+    "profiling",
+    "benchmark"
+  ],
+  "activationEvents": [
+    "onLanguage:cuda-cpp",
+    "onLanguage:cpp",
+    "onLanguage:python",
+    "workspaceContains:**/*.cu",
+    "workspaceContains:**/*.cuh"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "modalKernel.runKernel",
+        "title": "Run Kernel on Modal",
+        "category": "Modal GPU",
+        "icon": "$(play)"
+      },
+      {
+        "command": "modalKernel.selectGpu",
+        "title": "Select GPU Type",
+        "category": "Modal GPU",
+        "icon": "$(server)"
+      },
+      {
+        "command": "modalKernel.showResults",
+        "title": "Show Results Panel",
+        "category": "Modal GPU",
+        "icon": "$(graph)"
+      },
+      {
+        "command": "modalKernel.exportResults",
+        "title": "Export Results",
+        "category": "Modal GPU",
+        "icon": "$(export)"
+      },
+      {
+        "command": "modalKernel.setupModal",
+        "title": "Setup Modal Environment",
+        "category": "Modal GPU",
+        "icon": "$(gear)"
+      },
+      {
+        "command": "modalKernel.checkStatus",
+        "title": "Check Modal Status",
+        "category": "Modal GPU",
+        "icon": "$(info)"
+      },
+      {
+        "command": "modalKernel.reloadCredentials",
+        "title": "Reload Credentials",
+        "category": "Modal GPU",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "modalKernel.warmupImages",
+        "title": "Warmup Images (Pre-build for faster runs)",
+        "category": "Modal GPU",
+        "icon": "$(flame)"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "modalKernel.runKernel",
+          "when": "resourceExtname == .cu || resourceExtname == .py",
+          "group": "navigation"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "modalKernel.runKernel",
+          "when": "resourceExtname == .cu || resourceExtname == .py",
+          "group": "1_modal"
+        },
+        {
+          "command": "modalKernel.selectGpu",
+          "when": "resourceExtname == .cu || resourceExtname == .py",
+          "group": "1_modal"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "modalKernel.runKernel",
+        "key": "ctrl+shift+r",
+        "mac": "cmd+shift+r",
+        "when": "editorTextFocus && (resourceExtname == .cu || resourceExtname == .py)"
+      }
+    ],
+    "configuration": {
+      "title": "Modal CUDA Kernel Runner",
+      "properties": {
+        "modalKernel.defaultGpu": {
+          "type": "string",
+          "default": "T4",
+          "enum": ["T4", "L4", "A10G", "A100", "A100-40GB", "A100-80GB", "L40S", "H100", "H200", "B200"],
+          "description": "Default GPU type to use for kernel execution"
+        },
+        "modalKernel.gpuCount": {
+          "type": "number",
+          "default": 1,
+          "minimum": 1,
+          "maximum": 8,
+          "description": "Number of GPUs to attach to the container"
+        },
+        "modalKernel.timeout": {
+          "type": "number",
+          "default": 300,
+          "minimum": 10,
+          "maximum": 86400,
+          "description": "Execution timeout in seconds"
+        },
+        "modalKernel.warmupRuns": {
+          "type": "number",
+          "default": 3,
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Number of warmup runs before benchmarking"
+        },
+        "modalKernel.benchmarkRuns": {
+          "type": "number",
+          "default": 10,
+          "minimum": 1,
+          "maximum": 1000,
+          "description": "Number of benchmark runs for timing"
+        },
+        "modalKernel.enableProfiling": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable CUDA profiling (nsys/ncu style metrics)"
+        },
+        "modalKernel.pythonPath": {
+          "type": "string",
+          "default": "python3",
+          "description": "Path to Python interpreter (should have Modal installed)"
+        },
+        "modalKernel.autoSave": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically save file before running"
+        }
+      }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "modalKernelExplorer",
+          "title": "Modal GPU Runner",
+          "icon": "$(server)"
+        }
+      ]
+    },
+    "views": {
+      "modalKernelExplorer": [
+        {
+          "id": "modalKernel.gpuSelector",
+          "name": "GPU Selection"
+        },
+        {
+          "id": "modalKernel.runHistory",
+          "name": "Run History"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run package",
+    "compile": "npm run check-types && npm run lint && node esbuild.js",
+    "watch": "npm-run-all -p watch:*",
+    "watch:esbuild": "node esbuild.js --watch",
+    "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
+    "package": "npm run check-types && npm run lint && node esbuild.js --production",
+    "compile-tests": "tsc -p . --outDir out",
+    "watch-tests": "tsc -p . -w --outDir out",
+    "pretest": "npm run compile-tests && npm run compile && npm run lint",
+    "check-types": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.108.1",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "22.x",
+    "typescript-eslint": "^8.52.0",
+    "eslint": "^9.39.2",
+    "esbuild": "^0.27.2",
+    "npm-run-all": "^4.1.5",
+    "typescript": "^5.9.3",
+    "@vscode/test-cli": "^0.0.12",
+    "@vscode/test-electron": "^2.5.2"
+  }
+}
