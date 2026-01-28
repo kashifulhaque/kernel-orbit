@@ -72,7 +72,7 @@ export class ModalRunner {
 
   constructor(extensionPath: string) {
     this.extensionPath = extensionPath;
-    this.outputChannel = vscode.window.createOutputChannel('Modal GPU Runner');
+    this.outputChannel = vscode.window.createOutputChannel('Kernel Orbit');
   }
 
   /**

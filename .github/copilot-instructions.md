@@ -1,4 +1,4 @@
-# Modal CUDA Kernel Runner - Development Instructions
+# Kernel Orbit - Development Instructions
 
 ## Project Overview
 This is a VS Code extension that allows running CUDA and Triton kernels on Modal.com's GPU infrastructure.

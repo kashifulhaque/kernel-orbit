@@ -56,16 +56,13 @@ AVAILABLE_GPUS = [
 
 
 cuda_image = (
-  modal.Image.from_registry(
-    "nvidia/cuda:12.4.0-devel-ubuntu22.04",
-    add_python="3.11",
-  )
+  modal.Image.from_registry("nvidia/cuda:13.1.1-devel-ubuntu24.04", add_python="3.12")
   .entrypoint([])
   .apt_install("build-essential")
-  .pip_install("nvidia-ml-py", "numpy")
+  .uv_pip_install("nvidia-ml-py", "numpy")
 )
 
-triton_image = modal.Image.debian_slim(python_version="3.11").pip_install(
+triton_image = modal.Image.debian_slim(python_version="3.12").uv_pip_install(
   "torch",
   "triton",
   "numpy",
@@ -73,23 +70,20 @@ triton_image = modal.Image.debian_slim(python_version="3.11").pip_install(
 )
 
 
-def get_cuda_image(cuda_version: str = "12.4.0"):
-  """Get the pre-built CUDA image."""
+def get_cuda_image():
   return cuda_image
 
 
 def get_triton_image():
-  """Get the pre-built Triton image."""
   return triton_image
 
 
-app = modal.App("kernel-runner")
+app = modal.App("kernel-orbit")
 
 
 @dataclass
 class KernelResult:
   """Unified result structure for both CUDA and Triton kernels."""
-
   # Status
   successful: bool = False
   kernel_type: str = ""  # "cuda" or "triton"

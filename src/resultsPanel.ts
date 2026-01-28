@@ -41,7 +41,7 @@ export class ResultsPanel {
 
     const panel = vscode.window.createWebviewPanel(
       'modalKernelResults',
-      'Modal GPU Results',
+      'Results',
       column || vscode.ViewColumn.Two,
       {
         enableScripts: true,
@@ -201,7 +201,7 @@ ${data.profilerOutput ? `## Profiler Output\n\`\`\`\n${data.profilerOutput}\n\`\
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Modal GPU Results</title>
+    <title>Results</title>
     <style>
         :root {
             --bg-color: var(--vscode-editor-background);
@@ -593,7 +593,7 @@ ${data.profilerOutput ? `## Profiler Output\n\`\`\`\n${data.profilerOutput}\n\`\
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Modal GPU Results</title>
+    <title>Results</title>
     <style>
         body {
             font-family: var(--vscode-font-family);
@@ -637,7 +637,7 @@ ${data.profilerOutput ? `## Profiler Output\n\`\`\`\n${data.profilerOutput}\n\`\
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Modal GPU Results - Error</title>
+    <title>Results - Error</title>
     <style>
         body {
             font-family: var(--vscode-font-family);
@@ -681,7 +681,7 @@ ${data.profilerOutput ? `## Profiler Output\n\`\`\`\n${data.profilerOutput}\n\`\
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Modal GPU Results</title>
+    <title>Results</title>
     <style>
         body {
             font-family: var(--vscode-font-family);

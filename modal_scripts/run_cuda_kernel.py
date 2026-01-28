@@ -15,15 +15,14 @@ from dataclasses import dataclass, asdict
 from typing import Optional, Dict, Any, List
 
 
-def get_cuda_image(cuda_version: str = "12.8.1"):
-  """Create a Modal image with CUDA toolkit for compiling and running kernels."""
+def get_cuda_image(cuda_version: str = "13.1.1"):
   return (
     modal.Image.from_registry(
-      f"nvidia/cuda:{cuda_version}-devel-ubuntu22.04", add_python="3.11"
+      f"nvidia/cuda:{cuda_version}-devel-ubuntu24.04", add_python="3.12"
     )
     .entrypoint([])
     .apt_install("build-essential", "cmake", "ninja-build")
-    .pip_install("pynvml", "numpy", "py3nvml")
+    .uv_pip_install("nvidia-ml-py", "numpy")
   )
 
 

@@ -1,8 +1,6 @@
-# Modal CUDA Kernel Runner
+# Kernel Orbit
 
-Run CUDA and Triton kernels on [Modal.com](https://modal.com) GPUs directly from VS Code. Get comprehensive benchmarking, profiling, and metrics without leaving your editor.
-
-![Demo](https://via.placeholder.com/800x400?text=Modal+CUDA+Kernel+Runner+Demo)
+Kernel Orbit lets you run CUDA and Triton kernels on [modal.com](https://modal.com) GPUs directly from VS Code, complete with benchmarking, profiling, and detailed metrics in one glance.
 
 ## Features
 
@@ -57,7 +55,7 @@ This will open a browser window to authenticate with your Modal account.
 ### Selecting a GPU
 
 1. Click the GPU indicator in the status bar (bottom right)
-2. Or run command: **"Modal GPU: Select GPU Type"**
+2. Or run command: **"Kernel Orbit: Select GPU Type"**
 3. Choose from available GPUs:
    - **T4** - 16 GB, Turing (budget-friendly)
    - **L4** - 24 GB, Ada Lovelace
@@ -210,12 +208,12 @@ Configure in VS Code Settings (`Cmd+,`):
 
 | Command | Description | Shortcut |
 |---------|-------------|----------|
-| `Modal GPU: Run Kernel on Modal` | Run current file on Modal | `Cmd+Shift+R` / `Ctrl+Shift+R` |
-| `Modal GPU: Select GPU Type` | Choose GPU configuration | - |
-| `Modal GPU: Show Results Panel` | Open results webview | - |
-| `Modal GPU: Export Results` | Export results to file | - |
-| `Modal GPU: Setup Modal Environment` | Install and configure Modal | - |
-| `Modal GPU: Check Modal Status` | Verify Modal installation | - |
+| `Kernel Orbit: Run Kernel on Modal` | Run current file on Modal | `Cmd+Shift+R` / `Ctrl+Shift+R` |
+| `Kernel Orbit: Select GPU Type` | Choose GPU configuration | - |
+| `Kernel Orbit: Show Results Panel` | Open results webview | - |
+| `Kernel Orbit: Export Results` | Export results to file | - |
+| `Kernel Orbit: Setup Modal Environment` | Install and configure Modal | - |
+| `Kernel Orbit: Check Modal Status` | Verify Modal installation | - |
 
 ## Troubleshooting
 

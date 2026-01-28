@@ -11,7 +11,7 @@ let statusBarItem: vscode.StatusBarItem;
  * Activate the extension
  */
 export function activate(context: vscode.ExtensionContext) {
-  console.log('Modal Kernel Runner is now active!');
+  console.log('Kernel Orbit is now active!');
 
   modalRunner = new ModalRunner(context.extensionPath);
 
@@ -168,7 +168,7 @@ async function selectGpuCommand() {
 
   const selected = await vscode.window.showQuickPick(items, {
     placeHolder: 'Select GPU type for kernel execution',
-    title: 'Modal GPU Selection'
+    title: 'GPU Selection'
   });
 
   if (selected && selected.detail) {

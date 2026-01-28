@@ -1,7 +1,7 @@
 {
-  "name": "modal-cuda-kernel-runner",
-  "displayName": "Modal CUDA Kernel Runner",
-  "description": "Run CUDA and Triton kernels on Modal.com with GPU selection, benchmarking, and profiling",
+  "name": "kernel-orbit",
+  "displayName": "Kernel Orbit",
+  "description": "Kernel Orbit lets you run CUDA and Triton kernels on modal.com with GPU selection, benchmarking, and profiling",
   "version": "0.0.1",
   "publisher": "your-publisher-name",
   "engines": {
@@ -35,49 +35,49 @@
       {
         "command": "modalKernel.runKernel",
         "title": "Run Kernel on Modal",
-        "category": "Modal GPU",
+        "category": "Kernel Orbit",
         "icon": "$(play)"
       },
       {
         "command": "modalKernel.selectGpu",
         "title": "Select GPU Type",
-        "category": "Modal GPU",
+        "category": "Kernel Orbit",
         "icon": "$(server)"
       },
       {
         "command": "modalKernel.showResults",
         "title": "Show Results Panel",
-        "category": "Modal GPU",
+        "category": "Kernel Orbit",
         "icon": "$(graph)"
       },
       {
         "command": "modalKernel.exportResults",
         "title": "Export Results",
-        "category": "Modal GPU",
+        "category": "Kernel Orbit",
         "icon": "$(export)"
       },
       {
         "command": "modalKernel.setupModal",
         "title": "Setup Modal Environment",
-        "category": "Modal GPU",
+        "category": "Kernel Orbit",
         "icon": "$(gear)"
       },
       {
         "command": "modalKernel.checkStatus",
         "title": "Check Modal Status",
-        "category": "Modal GPU",
+        "category": "Kernel Orbit",
         "icon": "$(info)"
       },
       {
         "command": "modalKernel.reloadCredentials",
         "title": "Reload Credentials",
-        "category": "Modal GPU",
+        "category": "Kernel Orbit",
         "icon": "$(refresh)"
       },
       {
         "command": "modalKernel.warmupImages",
         "title": "Warmup Images (Pre-build for faster runs)",
-        "category": "Modal GPU",
+        "category": "Kernel Orbit",
         "icon": "$(flame)"
       }
     ],
@@ -111,7 +111,7 @@
       }
     ],
     "configuration": {
-      "title": "Modal CUDA Kernel Runner",
+      "title": "Kernel Orbit",
       "properties": {
         "modalKernel.defaultGpu": {
           "type": "string",
@@ -168,7 +168,7 @@
       "activitybar": [
         {
           "id": "modalKernelExplorer",
-          "title": "Modal GPU Runner",
+          "title": "Kernel Orbit",
           "icon": "$(server)"
         }
       ]
