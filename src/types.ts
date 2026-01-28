@@ -1,13 +1,3 @@
-import * as vscode from 'vscode';
-import * as path from 'path';
-import * as fs from 'fs';
-import * as os from 'os';
-import { ChildProcess, spawn, exec } from 'child_process';
-import { promisify } from 'util';
-
-const execAsync = promisify(exec);
-
-// GPU configurations available on Modal
 export interface GpuConfig {
   id: string;
   name: string;
@@ -28,7 +18,6 @@ export const AVAILABLE_GPUS: GpuConfig[] = [
   { id: "B200", name: "NVIDIA B200", memoryGb: 192, architecture: "Blackwell" },
 ];
 
-// Kernel execution result interface
 export interface KernelResult {
   successful: boolean;
   kernelType: string;
@@ -71,7 +60,6 @@ export interface KernelResult {
   timingSamplesMs: number[];
 }
 
-// Run history item
 export interface RunHistoryItem {
   id: string;
   fileName: string;
@@ -82,7 +70,6 @@ export interface RunHistoryItem {
   status: 'running' | 'completed' | 'failed';
 }
 
-// Extension state
 export class ModalKernelState {
   private static instance: ModalKernelState;
 

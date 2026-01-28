@@ -159,7 +159,6 @@ def run_triton_kernel(
   total_start = time.perf_counter()
 
   try:
-    # Get GPU info
     gpu_info = get_gpu_info()
     metrics.gpu_name = gpu_info.get("name", "Unknown")
     metrics.gpu_compute_capability = gpu_info.get("compute_capability", "Unknown")
@@ -167,10 +166,8 @@ def run_triton_kernel(
     metrics.gpu_temperature_c = gpu_info.get("temperature_c", 0)
     metrics.gpu_power_draw_w = gpu_info.get("power_draw_w", 0)
 
-    # Reset memory stats
     torch.cuda.reset_peak_memory_stats()
 
-    # Create a namespace for the kernel
     kernel_globals = {
       "torch": torch,
       "triton": triton,
@@ -178,20 +175,16 @@ def run_triton_kernel(
       "np": __import__("numpy"),
     }
 
-    # Capture stdout/stderr
     stdout_capture = io.StringIO()
 
-    # Execute the kernel source to define functions
     with contextlib.redirect_stdout(stdout_capture):
       exec(kernel_source, kernel_globals)
 
-    # Look for benchmark function or create one
     if "benchmark_kernel" in kernel_globals:
       benchmark_fn = kernel_globals["benchmark_kernel"]
     elif "main" in kernel_globals:
       benchmark_fn = kernel_globals["main"]
     else:
-      # Try to find a kernel and auto-benchmark
       kernel_fn = None
       for name, obj in kernel_globals.items():
         if hasattr(obj, "__wrapped__") or (
@@ -202,7 +195,6 @@ def run_triton_kernel(
           break
 
       if kernel_fn is None:
-        # Execute the entire source as a script
         with contextlib.redirect_stdout(stdout_capture):
           exec(kernel_source, kernel_globals)
         metrics.kernel_output = stdout_capture.getvalue()
@@ -210,7 +202,6 @@ def run_triton_kernel(
         metrics.total_time_ms = (time.perf_counter() - total_start) * 1000
         return asdict(metrics)
 
-    # Run warmup
     warmup_start = time.perf_counter()
     for _ in range(warmup_runs):
       with contextlib.redirect_stdout(stdout_capture):
@@ -219,7 +210,6 @@ def run_triton_kernel(
     metrics.warmup_time_ms = (time.perf_counter() - warmup_start) * 1000
     torch.cuda.synchronize()
 
-    # Benchmark runs
     times = []
     for _ in range(benchmark_runs):
       torch.cuda.synchronize()
@@ -237,13 +227,11 @@ def run_triton_kernel(
       metrics.min_execution_time_ms = min(times)
       metrics.max_execution_time_ms = max(times)
 
-    # Get memory stats
     mem_stats = get_torch_memory_stats()
     metrics.gpu_memory_allocated_mb = mem_stats.get("allocated_mb", 0)
     metrics.gpu_memory_reserved_mb = mem_stats.get("reserved_mb", 0)
     metrics.peak_memory_mb = mem_stats.get("max_allocated_mb", 0)
 
-    # Get final GPU stats
     gpu_info_after = get_gpu_info()
     metrics.gpu_utilization_percent = gpu_info_after.get("utilization_percent", 0)
 
@@ -287,7 +275,7 @@ def main(
 
   gpu_spec = f"{gpu}:{gpu_count}" if gpu_count > 1 else gpu
 
-  print(f"🚀 Running Triton kernel on Modal with {gpu_spec}...")
+  print(f"Running Triton kernel on Modal with {gpu_spec}...")
   print(f"   Warmup runs: {warmup}")
   print(f"   Benchmark runs: {benchmark}")
   print()
@@ -302,9 +290,9 @@ def main(
   )
 
   if result["successful"]:
-    print("✅ Kernel executed successfully!")
+    print("Kernel executed successfully!")
     print()
-    print("📊 Results:")
+    print("Results:")
     print(f"   GPU: {result['gpu_name']}")
     print(f"   Compute Capability: {result['gpu_compute_capability']}")
     print(f"   Warmup Time: {result['warmup_time_ms']:.2f} ms")
@@ -320,15 +308,15 @@ def main(
 
     if result["kernel_output"]:
       print()
-      print("📝 Kernel Output:")
+      print("Kernel Output:")
       print(result["kernel_output"])
   else:
-    print("❌ Kernel execution failed!")
+    print("Kernel execution failed!")
     print(f"   Error: {result['error_message']}")
 
   if output_json:
     Path(output_json).write_text(json.dumps(result, indent=2))
-    print(f"\n📁 Results saved to {output_json}")
+    print(f"\nResults saved to {output_json}")
 
   return result
 

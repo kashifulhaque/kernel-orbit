@@ -16,7 +16,6 @@ from typing import Optional, Dict, Any, List
 import argparse
 
 
-# Available GPU configurations on Modal
 AVAILABLE_GPUS = [
   {"id": "T4", "name": "NVIDIA T4", "memory_gb": 16, "architecture": "Turing"},
   {"id": "L4", "name": "NVIDIA L4", "memory_gb": 24, "architecture": "Ada Lovelace"},
@@ -56,11 +55,9 @@ AVAILABLE_GPUS = [
 ]
 
 
-# Pre-built images - defined once and cached by Modal
-# Using nvidia-ml-py instead of deprecated pynvml
 cuda_image = (
   modal.Image.from_registry(
-    "nvidia/cuda:12.4.0-devel-ubuntu22.04",  # Use stable CUDA version
+    "nvidia/cuda:12.4.0-devel-ubuntu22.04",
     add_python="3.11",
   )
   .entrypoint([])
@@ -138,7 +135,6 @@ class KernelResult:
 def get_gpu_info() -> Dict[str, Any]:
   """Get detailed GPU information using nvidia-ml-py."""
   try:
-    # nvidia-ml-py provides the pynvml module (maintained version)
     from pynvml import (
       nvmlInit,
       nvmlShutdown,
@@ -175,11 +171,6 @@ def get_gpu_info() -> Dict[str, Any]:
     return info
   except Exception as e:
     return {"error": str(e), "name": "Unknown"}
-
-
-# ============================================================================
-# CUDA Kernel Runner
-# ============================================================================
 
 
 @app.function(gpu="T4", image=get_cuda_image(), timeout=600)
@@ -264,7 +255,6 @@ def _run_cuda_kernel_impl(
   total_start = time.perf_counter()
 
   try:
-    # Get GPU info
     gpu_info = get_gpu_info()
     result.gpu_name = gpu_info.get("name", "Unknown")
     result.gpu_compute_capability = gpu_info.get("compute_capability", "Unknown")
@@ -278,7 +268,6 @@ def _run_cuda_kernel_impl(
 
       source_file.write_text(kernel_source)
 
-      # Compile
       compile_start = time.perf_counter()
       compile_result = subprocess.run(
         ["nvcc", str(source_file), "-o", str(exe_file), "-O3", "-lineinfo"],
@@ -294,13 +283,11 @@ def _run_cuda_kernel_impl(
         result.total_time_ms = (time.perf_counter() - total_start) * 1000
         return asdict(result)
 
-      # Warmup
       warmup_start = time.perf_counter()
       for _ in range(warmup_runs):
         subprocess.run([str(exe_file)], capture_output=True)
       result.warmup_time_ms = (time.perf_counter() - warmup_start) * 1000
 
-      # Benchmark
       times = []
       kernel_output = ""
       for _ in range(benchmark_runs):
@@ -319,12 +306,10 @@ def _run_cuda_kernel_impl(
         result.min_execution_time_ms = min(times)
         result.max_execution_time_ms = max(times)
 
-      # Get memory after execution
       gpu_info_after = get_gpu_info()
       result.gpu_memory_used_mb = gpu_info_after.get("memory_used_mb", 0)
       result.gpu_utilization_percent = gpu_info_after.get("utilization_percent", 0)
 
-      # Profiling
       if enable_profiling:
         try:
           prof_result = subprocess.run(
@@ -351,11 +336,6 @@ def _run_cuda_kernel_impl(
 
   result.total_time_ms = (time.perf_counter() - total_start) * 1000
   return asdict(result)
-
-
-# ============================================================================
-# Triton Kernel Runner
-# ============================================================================
 
 
 @app.function(gpu="T4", image=get_triton_image(), timeout=600)
@@ -446,7 +426,6 @@ def _run_triton_kernel_impl(
     import triton
     import triton.language as tl
 
-    # Get GPU info
     gpu_info = get_gpu_info()
     result.gpu_name = gpu_info.get("name", "Unknown")
     result.gpu_compute_capability = gpu_info.get("compute_capability", "Unknown")
@@ -456,7 +435,6 @@ def _run_triton_kernel_impl(
 
     torch.cuda.reset_peak_memory_stats()
 
-    # Prepare execution namespace
     kernel_globals = {
       "torch": torch,
       "triton": triton,
@@ -467,11 +445,9 @@ def _run_triton_kernel_impl(
 
     stdout_capture = io.StringIO()
 
-    # Execute source
     with contextlib.redirect_stdout(stdout_capture):
       exec(kernel_source, kernel_globals)
 
-    # Find runnable function
     run_fn = None
     for name in ["benchmark", "benchmark_kernel", "main", "run", "test"]:
       if name in kernel_globals and callable(kernel_globals[name]):
@@ -479,18 +455,15 @@ def _run_triton_kernel_impl(
         break
 
     if run_fn is None:
-      # Just execute and capture output
       result.kernel_output = stdout_capture.getvalue()
       result.successful = True
       result.total_time_ms = (time.perf_counter() - total_start) * 1000
 
-      # Still get memory stats
       result.gpu_memory_used_mb = torch.cuda.memory_allocated() / (1024**2)
       result.peak_memory_mb = torch.cuda.max_memory_allocated() / (1024**2)
 
       return asdict(result)
 
-    # Warmup
     warmup_start = time.perf_counter()
     for _ in range(warmup_runs):
       with contextlib.redirect_stdout(stdout_capture):
@@ -498,7 +471,6 @@ def _run_triton_kernel_impl(
       torch.cuda.synchronize()
     result.warmup_time_ms = (time.perf_counter() - warmup_start) * 1000
 
-    # Benchmark
     times = []
     for _ in range(benchmark_runs):
       torch.cuda.synchronize()
@@ -518,7 +490,6 @@ def _run_triton_kernel_impl(
       result.min_execution_time_ms = min(times)
       result.max_execution_time_ms = max(times)
 
-    # Memory stats
     result.gpu_memory_used_mb = torch.cuda.memory_allocated() / (1024**2)
     result.gpu_memory_reserved_mb = torch.cuda.memory_reserved() / (1024**2)
     result.peak_memory_mb = torch.cuda.max_memory_allocated() / (1024**2)
@@ -538,20 +509,10 @@ def _run_triton_kernel_impl(
   return asdict(result)
 
 
-# ============================================================================
-# GPU List Function
-# ============================================================================
-
-
 @app.function(image=modal.Image.debian_slim())
 def list_available_gpus() -> List[Dict[str, Any]]:
   """Return list of available GPU configurations."""
   return AVAILABLE_GPUS
-
-
-# ============================================================================
-# Image Warmup Functions - Pre-build images for faster subsequent runs
-# ============================================================================
 
 
 @app.function(gpu="T4", image=cuda_image, timeout=60)
@@ -564,11 +525,6 @@ def warmup_cuda_t4() -> str:
 def warmup_triton_t4() -> str:
   """Warmup Triton image on T4."""
   return "Triton image ready on T4"
-
-
-# ============================================================================
-# Local Entry Point
-# ============================================================================
 
 
 @app.local_entrypoint()
@@ -598,16 +554,16 @@ def main(
       warmup_images: Pre-build Docker images (run once for faster subsequent runs)
   """
   if warmup_images:
-    print("🔥 Pre-building Modal images (this only needs to be done once)...")
+    print("Pre-building Modal images (this only needs to be done once)...")
     print()
     print("Building CUDA image...")
     result1 = warmup_cuda_t4.remote()
-    print(f"  ✅ {result1}")
+    print(f"  {result1}")
     print("Building Triton image...")
     result2 = warmup_triton_t4.remote()
-    print(f"  ✅ {result2}")
+    print(f"  {result2}")
     print()
-    print("✅ Images are now cached! Subsequent kernel runs will be much faster.")
+    print("Images are now cached! Subsequent kernel runs will be much faster.")
     return
 
   if list_gpus:
@@ -622,7 +578,6 @@ def main(
   kernel_path = Path(kernel_file)
   kernel_source = kernel_path.read_text()
 
-  # Auto-detect kernel type
   if kernel_type == "auto":
     if kernel_path.suffix == ".cu":
       kernel_type = "cuda"
@@ -632,13 +587,12 @@ def main(
       print(f"Cannot auto-detect kernel type for {kernel_path.suffix}")
       sys.exit(1)
 
-  print(f"🚀 Running {kernel_type.upper()} kernel on Modal with {gpu}...")
+  print(f"Running {kernel_type.upper()} kernel on Modal with {gpu}...")
   print(f"   File: {kernel_file}")
   print(f"   Warmup runs: {warmup}")
   print(f"   Benchmark runs: {benchmark}")
   print()
 
-  # Select runner based on GPU and type
   gpu_runners = {
     "cuda": {
       "T4": run_cuda_on_t4,
@@ -669,14 +623,8 @@ def main(
 
   result = runner.remote(kernel_source, warmup, benchmark, profile)
 
-  # Print results
   if result["successful"]:
-    print("✅ Kernel executed successfully!")
-    print()
-    print("=" * 60)
-    print("📊 RESULTS")
-    print("=" * 60)
-    print()
+    print("Kernel executed successfully!")
     print("GPU Information:")
     print(f"  Name: {result['gpu_name']}")
     print(f"  Requested: {result['gpu_type_requested']}")
@@ -705,19 +653,15 @@ def main(
 
     if result["kernel_output"]:
       print()
-      print("=" * 60)
-      print("📝 KERNEL OUTPUT")
-      print("=" * 60)
+      print("KERNEL OUTPUT")
       print(result["kernel_output"])
 
     if result.get("profiler_output"):
       print()
-      print("=" * 60)
-      print("🔬 PROFILER OUTPUT")
-      print("=" * 60)
+      print("PROFILER OUTPUT")
       print(result["profiler_output"])
   else:
-    print("❌ Kernel execution failed!")
+    print("Kernel execution failed!")
     print()
     print("Error:")
     print(result["error_message"])
@@ -727,10 +671,8 @@ def main(
       print("Compiler Output:")
       print(result["compiler_output"])
 
-  # Save JSON output
   if output_json:
     Path(output_json).write_text(json.dumps(result, indent=2))
-    print(f"\n📁 Results saved to {output_json}")
+    print(f"\nResults saved to {output_json}")
 
-  # Return JSON for extension to parse
   return result

@@ -100,19 +100,16 @@ export class ModalRunner {
       const lines = content.split('\n');
 
       for (const line of lines) {
-        // Skip comments and empty lines
         const trimmed = line.trim();
         if (!trimmed || trimmed.startsWith('#')) {
           continue;
         }
 
-        // Parse KEY=VALUE format
         const match = trimmed.match(/^([^=]+)=(.*)$/);
         if (match) {
           const key = match[1].trim();
           let value = match[2].trim();
 
-          // Remove quotes if present
           if ((value.startsWith('"') && value.endsWith('"')) ||
             (value.startsWith("'") && value.endsWith("'"))) {
             value = value.slice(1, -1);
@@ -132,21 +129,17 @@ export class ModalRunner {
    * Load Modal credentials from .env file in workspace or active file directory
    */
   private loadModalCredentials(): ModalCredentials {
-    // Return cached if available
     if (this.cachedCredentials) {
       return this.cachedCredentials;
     }
 
-    // Build list of directories to check for .env
     const dirsToCheck: string[] = [];
 
-    // 1. Check active file's directory first (most likely to be relevant)
     const activeEditor = vscode.window.activeTextEditor;
     if (activeEditor) {
       const fileDir = path.dirname(activeEditor.document.fileName);
       dirsToCheck.push(fileDir);
 
-      // Also check parent directories up to 3 levels
       let parentDir = path.dirname(fileDir);
       for (let i = 0; i < 3 && parentDir !== path.dirname(parentDir); i++) {
         dirsToCheck.push(parentDir);
@@ -154,7 +147,6 @@ export class ModalRunner {
       }
     }
 
-    // 2. Check workspace folders
     const workspaceFolders = vscode.workspace.workspaceFolders;
     if (workspaceFolders) {
       for (const folder of workspaceFolders) {
@@ -166,7 +158,6 @@ export class ModalRunner {
 
     this.outputChannel.appendLine(`Searching for .env in directories: ${dirsToCheck.join(', ')}`);
 
-    // Check each directory for .env
     for (const dir of dirsToCheck) {
       const envPath = path.join(dir, '.env');
 
@@ -192,7 +183,6 @@ export class ModalRunner {
       }
     }
 
-    // 3. Check if credentials are already in process.env (e.g., set in shell)
     if (process.env['MODAL_TOKEN_ID'] && process.env['MODAL_TOKEN_SECRET']) {
       this.outputChannel.appendLine('Using Modal credentials from shell environment');
       this.cachedCredentials = {
@@ -216,34 +206,27 @@ export class ModalRunner {
     const venvInfo = this.detectVirtualEnvironment();
     const env: NodeJS.ProcessEnv = { ...process.env };
 
-    // Set Modal credentials
     if (credentials.found && credentials.tokenId && credentials.tokenSecret) {
       env['MODAL_TOKEN_ID'] = credentials.tokenId;
       env['MODAL_TOKEN_SECRET'] = credentials.tokenSecret;
       this.outputChannel.appendLine(`Setting MODAL_TOKEN_ID=${credentials.tokenId.substring(0, 6)}...`);
     }
 
-    // Ensure venv's bin directory is in PATH
     if (venvInfo.found && venvInfo.venvPath) {
       const venvBinDir = process.platform === 'win32'
         ? path.join(venvInfo.venvPath, 'Scripts')
         : path.join(venvInfo.venvPath, 'bin');
 
-      // Prepend venv bin to PATH
       const currentPath = env['PATH'] || '';
       if (!currentPath.includes(venvBinDir)) {
         env['PATH'] = `${venvBinDir}${path.delimiter}${currentPath}`;
         this.outputChannel.appendLine(`Added ${venvBinDir} to PATH`);
       }
 
-      // Set VIRTUAL_ENV environment variable
       env['VIRTUAL_ENV'] = venvInfo.venvPath;
     }
 
-    // Ensure Python output is unbuffered for real-time logs
     env['PYTHONUNBUFFERED'] = '1';
-
-    // For Modal's HTTP client
     env['PYTHONDONTWRITEBYTECODE'] = '1';
 
     return env;
@@ -254,7 +237,6 @@ export class ModalRunner {
    * Checks for both uv and standard venv
    */
   private detectVirtualEnvironment(): VenvInfo {
-    // Return cached result if available
     if (this.cachedVenvInfo) {
       return this.cachedVenvInfo;
     }
@@ -264,11 +246,9 @@ export class ModalRunner {
       return { found: false, type: 'none', pythonPath: 'python3' };
     }
 
-    // Check each workspace folder for a venv
     for (const folder of workspaceFolders) {
       const workspacePath = folder.uri.fsPath;
 
-      // Common venv locations to check
       const venvPaths = [
         path.join(workspacePath, '.venv'),
         path.join(workspacePath, 'venv'),
@@ -282,7 +262,6 @@ export class ModalRunner {
           : path.join(venvPath, 'bin', 'python');
 
         if (fs.existsSync(pythonPath)) {
-          // Check if it's a uv-managed venv by looking for uv markers
           const isUv = this.isUvManagedVenv(venvPath);
 
           this.cachedVenvInfo = {
@@ -298,7 +277,6 @@ export class ModalRunner {
       }
     }
 
-    // No venv found, return default
     return { found: false, type: 'none', pythonPath: 'python3' };
   }
 
@@ -306,13 +284,11 @@ export class ModalRunner {
    * Check if a venv is managed by uv
    */
   private isUvManagedVenv(venvPath: string): boolean {
-    // uv creates a pyvenv.cfg with specific markers
     const pyvenvCfg = path.join(venvPath, 'pyvenv.cfg');
 
     if (fs.existsSync(pyvenvCfg)) {
       try {
         const content = fs.readFileSync(pyvenvCfg, 'utf-8');
-        // uv adds a specific marker or we can check for uv in the prompt
         if (content.includes('uv =') || content.includes('uv=')) {
           return true;
         }
@@ -321,7 +297,6 @@ export class ModalRunner {
       }
     }
 
-    // Also check for uv.lock in workspace (indicates uv project)
     const workspaceFolders = vscode.workspace.workspaceFolders;
     if (workspaceFolders) {
       for (const folder of workspaceFolders) {
@@ -342,18 +317,15 @@ export class ModalRunner {
     const config = vscode.workspace.getConfiguration('modalKernel');
     const configuredPath = config.get<string>('pythonPath', '');
 
-    // If user has explicitly configured a path (and it's not the default), use it
     if (configuredPath && configuredPath !== 'python3' && configuredPath !== 'python') {
       return configuredPath;
     }
 
-    // Try to detect venv
     const venvInfo = this.detectVirtualEnvironment();
     if (venvInfo.found) {
       return venvInfo.pythonPath;
     }
 
-    // Fall back to default
     return configuredPath || 'python3';
   }
 
@@ -399,11 +371,9 @@ export class ModalRunner {
 
     const envPath = path.join(workspaceFolders[0].uri.fsPath, '.env');
 
-    // Check if .env already exists
     if (fs.existsSync(envPath)) {
       const existing = fs.readFileSync(envPath, 'utf-8');
 
-      // Check if Modal tokens are already present
       if (existing.includes('MODAL_TOKEN_ID') || existing.includes('MODAL_TOKEN_SECRET')) {
         vscode.window.showInformationMessage('.env file already contains Modal credentials');
         const doc = await vscode.workspace.openTextDocument(envPath);
@@ -411,7 +381,6 @@ export class ModalRunner {
         return true;
       }
 
-      // Append to existing .env
       const toAppend = `
 # Modal.com API Credentials
 # Get your tokens from: https://modal.com/settings
@@ -421,7 +390,6 @@ MODAL_TOKEN_SECRET=your-token-secret-here
       fs.appendFileSync(envPath, toAppend);
       this.outputChannel.appendLine(`Appended Modal credentials template to: ${envPath}`);
     } else {
-      // Create new .env file
       const content = `# Modal.com API Credentials
 # Get your tokens from: https://modal.com/settings
 MODAL_TOKEN_ID=your-token-id-here
@@ -431,10 +399,8 @@ MODAL_TOKEN_SECRET=your-token-secret-here
       this.outputChannel.appendLine(`Created .env file at: ${envPath}`);
     }
 
-    // Clear cached credentials
     this.cachedCredentials = null;
 
-    // Open the file for editing
     const doc = await vscode.workspace.openTextDocument(envPath);
     await vscode.window.showTextDocument(doc);
 
@@ -469,7 +435,6 @@ MODAL_TOKEN_SECRET=your-token-secret-here
       this.outputChannel.appendLine(`  .env file path: ${credentials.envFilePath}`);
     }
 
-    // Log workspace folders for debugging
     const workspaceFolders = vscode.workspace.workspaceFolders;
     if (workspaceFolders) {
       this.outputChannel.appendLine(`Workspace folders: ${workspaceFolders.map(f => f.uri.fsPath).join(', ')}`);
@@ -478,7 +443,6 @@ MODAL_TOKEN_SECRET=your-token-secret-here
     }
 
     try {
-      // Check if modal is installed
       const modalEnv = this.getModalEnv();
       const { stdout } = await execAsync(`"${pythonPath}" -c "import modal; print(modal.__version__)"`, {
         env: modalEnv
@@ -496,13 +460,11 @@ MODAL_TOKEN_SECRET=your-token-secret-here
       };
     }
 
-    // Check authentication
     this.outputChannel.appendLine('Checking Modal authentication...');
 
     // If we have credentials from .env, validate their format and trust them
     // Actual validation happens when running the kernel
     if (credentials.found && credentials.tokenId && credentials.tokenSecret) {
-      // Modal tokens have specific prefixes: ak- for token ID, as- for secret
       const validTokenIdPrefix = credentials.tokenId.startsWith('ak-');
       const validSecretPrefix = credentials.tokenSecret.startsWith('as-');
 
@@ -521,7 +483,6 @@ MODAL_TOKEN_SECRET=your-token-secret-here
       }
     }
 
-    // If no .env credentials, check for ~/.modal config file
     const modalConfigPath = path.join(os.homedir(), '.modal', 'credentials.json');
     const modalTokenPath = path.join(os.homedir(), '.modal.toml');
 
@@ -530,7 +491,6 @@ MODAL_TOKEN_SECRET=your-token-secret-here
       return { installed: true, authenticated: true, pythonInfo };
     }
 
-    // No authentication found
     this.outputChannel.appendLine('No Modal credentials found');
     return {
       installed: true,
@@ -548,18 +508,15 @@ MODAL_TOKEN_SECRET=your-token-secret-here
     const terminal = vscode.window.createTerminal('Modal Setup');
     terminal.show();
 
-    // Get workspace path for venv creation
     const workspaceFolders = vscode.workspace.workspaceFolders;
     const workspacePath = workspaceFolders ? workspaceFolders[0].uri.fsPath : '.';
 
     if (venvInfo.found) {
-      // Venv exists, just install modal
       const installCmd = venvInfo.type === 'uv' ? 'uv pip install modal' : 'pip install modal';
       terminal.sendText(`# Detected ${venvInfo.type} virtual environment at: ${venvInfo.venvPath}`);
       terminal.sendText(`# Installing Modal...`);
       terminal.sendText(installCmd);
     } else {
-      // No venv, ask user which tool to use
       const choice = await vscode.window.showQuickPick(
         [
           { label: 'uv (recommended)', description: 'Fast Python package manager', value: 'uv' },
@@ -596,10 +553,8 @@ MODAL_TOKEN_SECRET=your-token-secret-here
     terminal.sendText('# Get your tokens from: https://modal.com/settings');
     terminal.sendText('');
 
-    // Clear cached venv info so it gets re-detected
     this.clearCache();
 
-    // Offer to create .env file
     const result = await vscode.window.showInformationMessage(
       'Modal installation started. Would you like to create a .env file for credentials?',
       'Create .env',
@@ -624,13 +579,11 @@ MODAL_TOKEN_SECRET=your-token-secret-here
     if (ext === '.cu' || ext === '.cuh') {
       return 'cuda';
     } else if (ext === '.py') {
-      // Check if it's a Triton kernel by looking for imports
       try {
         const content = fs.readFileSync(filePath, 'utf-8');
         if (content.includes('import triton') || content.includes('from triton')) {
           return 'triton';
         }
-        // Could also be a CUDA Python file, but default to triton for .py
         return 'triton';
       } catch {
         return 'triton';
@@ -667,7 +620,6 @@ MODAL_TOKEN_SECRET=your-token-secret-here
     const scriptsPath = this.getScriptsPath();
     const runnerScript = path.join(scriptsPath, 'kernel_runner.py');
 
-    // Create temp file for JSON output
     const outputFile = path.join(os.tmpdir(), `modal_result_${Date.now()}.json`);
 
     this.outputChannel.show(true);
@@ -730,19 +682,15 @@ MODAL_TOKEN_SECRET=your-token-secret-here
         this.outputChannel.appendLine('');
 
         if (code === 0) {
-          // Try to read JSON result
           try {
             const resultJson = fs.readFileSync(outputFile, 'utf-8');
             const rawResult = JSON.parse(resultJson);
-            // Convert snake_case keys from Python to camelCase for TypeScript
             const result = convertKeysToCamelCase(rawResult) as KernelResult;
 
-            // Clean up temp file
             try { fs.unlinkSync(outputFile); } catch { }
 
             resolve(result);
           } catch (error) {
-            // Parse from stdout if JSON file not available
             reject(new Error(`Failed to parse results: ${error}`));
           }
         } else {

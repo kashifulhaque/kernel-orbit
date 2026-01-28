@@ -15,7 +15,6 @@ from dataclasses import dataclass, asdict
 from typing import Optional, Dict, Any, List
 
 
-# Build the CUDA image with full toolkit
 def get_cuda_image(cuda_version: str = "12.8.1"):
   """Create a Modal image with CUDA toolkit for compiling and running kernels."""
   return (
@@ -141,13 +140,11 @@ def run_cuda_executable(exe_path: str, warmup_runs: int, benchmark_runs: int) ->
   times = []
   output = ""
 
-  # Warmup runs
   warmup_start = time.perf_counter()
   for _ in range(warmup_runs):
     subprocess.run([exe_path], capture_output=True)
   warmup_time = (time.perf_counter() - warmup_start) * 1000
 
-  # Benchmark runs
   for _ in range(benchmark_runs):
     start = time.perf_counter()
     result = subprocess.run([exe_path], capture_output=True, text=True)
@@ -171,7 +168,6 @@ def run_nvprof_analysis(exe_path: str) -> str:
   except subprocess.TimeoutExpired:
     return "Profiling timed out"
   except FileNotFoundError:
-    # Try nvidia-smi based profiling as fallback
     try:
       result = subprocess.run(
         ["nvidia-smi", "dmon", "-s", "pucvmet", "-d", "1", "-c", "5"],
@@ -224,7 +220,6 @@ def run_cuda_kernel(
   total_start = time.perf_counter()
 
   try:
-    # Get GPU info first
     gpu_info = get_gpu_info()
     metrics.gpu_name = gpu_info.get("name", "Unknown")
     metrics.gpu_compute_capability = gpu_info.get("compute_capability", "Unknown")
@@ -232,15 +227,12 @@ def run_cuda_kernel(
     metrics.gpu_temperature_c = gpu_info.get("temperature_c", 0)
     metrics.gpu_power_draw_w = gpu_info.get("power_draw_w", 0)
 
-    # Create temp directory for compilation
     with tempfile.TemporaryDirectory() as tmpdir:
       source_file = Path(tmpdir) / "kernel.cu"
       exe_file = Path(tmpdir) / "kernel"
 
-      # Write source
       source_file.write_text(kernel_source)
 
-      # Compile
       compilation_time, retcode, nvcc_output = compile_cuda_kernel(
         str(source_file), str(exe_file), extra_compile_flags
       )
@@ -252,7 +244,6 @@ def run_cuda_kernel(
         metrics.error_message = f"Compilation failed:\n{nvcc_output}"
         return asdict(metrics)
 
-      # Run kernel
       times, warmup_time, kernel_output = run_cuda_executable(
         str(exe_file), warmup_runs, benchmark_runs
       )
@@ -265,12 +256,10 @@ def run_cuda_kernel(
         metrics.min_execution_time_ms = min(times)
         metrics.max_execution_time_ms = max(times)
 
-      # Get memory after execution
       gpu_info_after = get_gpu_info()
       metrics.gpu_memory_allocated_mb = gpu_info_after.get("memory_used_mb", 0)
       metrics.gpu_utilization_percent = gpu_info_after.get("utilization_percent", 0)
 
-      # Run profiler if enabled
       if enable_profiling:
         metrics.profiler_output = run_nvprof_analysis(str(exe_file))
 
@@ -285,7 +274,6 @@ def run_cuda_kernel(
   return asdict(metrics)
 
 
-# Create dynamic GPU functions
 def create_gpu_runner(gpu_spec: str):
   """Create a Modal function with specific GPU configuration."""
 
@@ -308,7 +296,6 @@ def create_gpu_runner(gpu_spec: str):
   return gpu_runner
 
 
-# Main entry point for CLI usage
 @app.local_entrypoint()
 def main(
   kernel_file: str,
@@ -331,19 +318,16 @@ def main(
       profile: Enable profiling
       output_json: Optional output JSON file path
   """
-  # Read kernel source
   kernel_source = Path(kernel_file).read_text()
 
-  # Build GPU spec
   gpu_spec = f"{gpu}:{gpu_count}" if gpu_count > 1 else gpu
 
-  print(f"🚀 Running kernel on Modal with {gpu_spec}...")
+  print(f"Running kernel on Modal with {gpu_spec}...")
   print(f"   Warmup runs: {warmup}")
   print(f"   Benchmark runs: {benchmark}")
   print(f"   Profiling: {'enabled' if profile else 'disabled'}")
   print()
 
-  # Run on Modal
   result = run_cuda_kernel.remote(
     kernel_source=kernel_source,
     gpu_type=gpu,
@@ -353,11 +337,10 @@ def main(
     enable_profiling=profile,
   )
 
-  # Output results
   if result["successful"]:
-    print("✅ Kernel executed successfully!")
+    print("Kernel executed successfully!")
     print()
-    print("📊 Results:")
+    print("Results:")
     print(f"   GPU: {result['gpu_name']}")
     print(f"   Compute Capability: {result['gpu_compute_capability']}")
     print(f"   Compilation Time: {result['compilation_time_ms']:.2f} ms")
@@ -373,25 +356,24 @@ def main(
 
     if result["kernel_output"]:
       print()
-      print("📝 Kernel Output:")
+      print("Kernel Output:")
       print(result["kernel_output"])
 
     if result["profiler_output"]:
       print()
-      print("🔬 Profiler Output:")
+      print("Profiler Output:")
       print(result["profiler_output"])
   else:
-    print("❌ Kernel execution failed!")
+    print("Kernel execution failed!")
     print(f"   Error: {result['error_message']}")
     if result["nvcc_output"]:
       print()
       print("NVCC Output:")
       print(result["nvcc_output"])
 
-  # Save JSON output if requested
   if output_json:
     Path(output_json).write_text(json.dumps(result, indent=2))
-    print(f"\n📁 Results saved to {output_json}")
+    print(f"\nResults saved to {output_json}")
 
   return result
 
@@ -410,5 +392,4 @@ if __name__ == "__main__":
 
   args = parser.parse_args()
 
-  # This would be called via `modal run` command
   print("Use: modal run run_cuda_kernel.py --kernel-file <file> [options]")

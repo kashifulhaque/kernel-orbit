@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { KernelResult, RunHistoryItem } from './types';
+import { KernelResult } from './types';
 
 /**
  * Manages the Results Panel webview
@@ -15,17 +15,14 @@ export class ResultsPanel {
     this._panel = panel;
     this._extensionUri = extensionUri;
 
-    // Set initial content
     this._panel.webview.html = this._getHtmlContent(null);
 
-    // Handle messages from webview
     this._panel.webview.onDidReceiveMessage(
       message => this._handleMessage(message),
       null,
       this._disposables
     );
 
-    // Handle panel disposal
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
   }
 
@@ -37,13 +34,11 @@ export class ResultsPanel {
       ? vscode.window.activeTextEditor.viewColumn
       : undefined;
 
-    // If panel exists, show it
     if (ResultsPanel.currentPanel) {
       ResultsPanel.currentPanel._panel.reveal(column);
       return ResultsPanel.currentPanel;
     }
 
-    // Create new panel
     const panel = vscode.window.createWebviewPanel(
       'modalKernelResults',
       'Modal GPU Results',
@@ -568,7 +563,6 @@ ${data.profilerOutput ? `## Profiler Output\n\`\`\`\n${data.profilerOutput}\n\`\
       return '';
     }
 
-    // Filter out undefined/null/NaN values
     const validSamples = samples.filter(t => t !== undefined && t !== null && !isNaN(t));
     if (validSamples.length === 0) {
       return '';

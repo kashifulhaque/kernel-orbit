@@ -11,12 +11,11 @@ let statusBarItem: vscode.StatusBarItem;
  * Activate the extension
  */
 export function activate(context: vscode.ExtensionContext) {
-  console.log('Modal CUDA Kernel Runner is now active!');
+  console.log('Modal Kernel Runner is now active!');
 
-  // Initialize the Modal runner
   modalRunner = new ModalRunner(context.extensionPath);
 
-  // Create status bar item
+  // Status bar
   statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   statusBarItem.command = 'modalKernel.selectGpu';
   updateStatusBar();
@@ -80,7 +79,6 @@ async function runKernelCommand(context: vscode.ExtensionContext) {
     return;
   }
 
-  // Check Modal setup
   const setupStatus = await modalRunner.checkModalSetup();
   if (!setupStatus.installed) {
     const action = await vscode.window.showErrorMessage(
@@ -109,13 +107,12 @@ async function runKernelCommand(context: vscode.ExtensionContext) {
 
     if (action === 'Create .env') {
       await modalRunner.createEnvFile();
-      // Clear cache so credentials are reloaded next time
       modalRunner.clearCache();
     } else if (action === 'Open Terminal') {
       const terminal = vscode.window.createTerminal('Modal Auth');
       terminal.show();
       terminal.sendText('# Run this command to authenticate with Modal:');
-      terminal.sendText('modal token set --token-id YOUR_TOKEN_ID --token-secret YOUR_TOKEN_SECRET');
+      terminal.sendText('# modal token set --token-id YOUR_TOKEN_ID --token-secret YOUR_TOKEN_SECRET');
       terminal.sendText('# Get your tokens from: https://modal.com/settings');
     } else if (action === 'Open Modal Dashboard') {
       vscode.env.openExternal(vscode.Uri.parse('https://modal.com/settings'));
@@ -123,7 +120,6 @@ async function runKernelCommand(context: vscode.ExtensionContext) {
     return;
   }
 
-  // Save file if configured
   const config = vscode.workspace.getConfiguration('modalKernel');
   if (config.get<boolean>('autoSave', true)) {
     await editor.document.save();
@@ -132,7 +128,6 @@ async function runKernelCommand(context: vscode.ExtensionContext) {
   const state = ModalKernelState.getInstance();
   const gpuType = state.selectedGpu;
 
-  // Show results panel
   const resultsPanel = ResultsPanel.createOrShow(context.extensionUri);
   resultsPanel.showLoading(`Running kernel on ${gpuType}...`);
 
@@ -147,10 +142,10 @@ async function runKernelCommand(context: vscode.ExtensionContext) {
 
     if (result.successful) {
       vscode.window.showInformationMessage(
-        `✅ Kernel completed in ${result.executionTimeMs.toFixed(2)}ms on ${result.gpuName}`
+        `Kernel completed in ${result.executionTimeMs.toFixed(4)}ms on ${result.gpuName}`
       );
     } else {
-      vscode.window.showErrorMessage(`❌ Kernel failed: ${result.errorMessage.substring(0, 100)}...`);
+      vscode.window.showErrorMessage(`Kernel failed: ${result.errorMessage.substring(0, 100)}...`);
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
@@ -210,7 +205,6 @@ async function exportResultsCommand() {
     return;
   }
 
-  // Export the most recent result
   const latestRun = state.runHistory[0];
   if (!latestRun.result) {
     vscode.window.showWarningMessage('No results available to export.');
@@ -332,11 +326,11 @@ async function reloadCredentialsCommand() {
 
   if (status.pythonInfo?.hasEnvCredentials) {
     vscode.window.showInformationMessage(
-      `✅ Modal credentials reloaded from: ${status.pythonInfo.envFilePath}`
+      `Modal credentials reloaded from: ${status.pythonInfo.envFilePath}`
     );
   } else {
     vscode.window.showWarningMessage(
-      '⚠️ No Modal credentials found. Add MODAL_TOKEN_ID and MODAL_TOKEN_SECRET to .env file.'
+      'No Modal credentials found. Add MODAL_TOKEN_ID and MODAL_TOKEN_SECRET to .env file.'
     );
   }
 }
@@ -358,7 +352,6 @@ async function warmupImagesCommand() {
   const terminal = vscode.window.createTerminal('Modal Image Warmup');
   terminal.show();
 
-  // Get the path to the kernel runner script
   const scriptsPath = modalRunner.getScriptsPath();
   const pythonPath = modalRunner.getResolvedPythonPath();
 
@@ -375,7 +368,6 @@ async function checkStatusCommand() {
   const status = await modalRunner.checkModalSetup();
   const pythonInfo = status.pythonInfo;
 
-  // Build detailed status message
   let details = '';
   if (pythonInfo) {
     details = `\n\nPython: ${pythonInfo.path}`;
@@ -386,17 +378,17 @@ async function checkStatusCommand() {
 
   if (status.installed && status.authenticated) {
     vscode.window.showInformationMessage(
-      `✅ Modal is installed and authenticated. Ready to run kernels!${details}`
+      `Modal is installed and authenticated. Ready to run kernels!${details}`
     );
   } else if (status.installed) {
     vscode.window.showWarningMessage(
-      `⚠️ Modal is installed but not authenticated. Run "modal token set" to authenticate.${details}`
+      `Modal is installed but not authenticated. Run "modal token set" to authenticate.${details}`
     );
   } else {
     const installCmd = pythonInfo?.venvType === 'uv' ? 'uv pip install modal' : 'pip install modal';
 
     const action = await vscode.window.showErrorMessage(
-      `❌ Modal is not installed.${details}`,
+      `Modal is not installed.${details}`,
       'Setup Modal',
       'Copy Install Command'
     );
