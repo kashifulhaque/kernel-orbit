@@ -1,15 +1,10 @@
 """
 Modal script to run Triton Python kernels with comprehensive profiling and metrics.
-This script is invoked by the VS Code extension.
 """
 
-import modal
-import subprocess
 import json
 import time
-import sys
-import os
-import tempfile
+import modal
 from pathlib import Path
 from dataclasses import dataclass, asdict
 from typing import Optional, Dict, Any, List

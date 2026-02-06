@@ -411,9 +411,9 @@ ${data.profilerOutput ? `## Profiler Output\n\`\`\`\n${data.profilerOutput}\n\`\
             <div class="timestamp">${new Date().toLocaleString()}</div>
         </div>
         <div class="export-buttons">
-            <button class="export-btn" onclick="exportResults('json')">📄 JSON</button>
-            <button class="export-btn" onclick="exportResults('csv')">📊 CSV</button>
-            <button class="export-btn" onclick="exportResults('md')">📝 Markdown</button>
+            <button class="export-btn" onclick="exportResults('json')">JSON</button>
+            <button class="export-btn" onclick="exportResults('csv')">CSV</button>
+            <button class="export-btn" onclick="exportResults('md')">Markdown</button>
         </div>
     </div>
     
@@ -425,7 +425,7 @@ ${data.profilerOutput ? `## Profiler Output\n\`\`\`\n${data.profilerOutput}\n\`\
     
     <div class="grid">
         <div class="card">
-            <h2><span class="icon">🖥️</span> GPU Information</h2>
+            <h2>GPU Information</h2>
             <div class="metric-grid">
                 <div class="metric">
                     <div class="metric-label">GPU</div>
@@ -447,7 +447,7 @@ ${data.profilerOutput ? `## Profiler Output\n\`\`\`\n${data.profilerOutput}\n\`\
         </div>
         
         <div class="card">
-            <h2><span class="icon">⏱️</span> Execution Time</h2>
+            <h2>Execution Time</h2>
             <div class="metric-grid">
                 <div class="metric" style="grid-column: span 2;">
                     <div class="metric-label">Average Execution Time</div>
@@ -470,7 +470,7 @@ ${data.profilerOutput ? `## Profiler Output\n\`\`\`\n${data.profilerOutput}\n\`\
         </div>
         
         <div class="card">
-            <h2><span class="icon">📊</span> Timing Breakdown</h2>
+            <h2>Timing Breakdown</h2>
             <div class="metric-grid">
                 <div class="metric">
                     <div class="metric-label">Compilation</div>
@@ -492,7 +492,7 @@ ${data.profilerOutput ? `## Profiler Output\n\`\`\`\n${data.profilerOutput}\n\`\
         </div>
         
         <div class="card">
-            <h2><span class="icon">💾</span> Memory Usage</h2>
+            <h2>Memory Usage</h2>
             <div class="metric-grid">
                 <div class="metric">
                     <div class="metric-label">Memory Used</div>
@@ -516,21 +516,21 @@ ${data.profilerOutput ? `## Profiler Output\n\`\`\`\n${data.profilerOutput}\n\`\
     
     ${result.kernelOutput ? `
     <div class="output-section">
-        <h2>📝 Kernel Output</h2>
+        <h2>Kernel Output</h2>
         <div class="output-content">${this._escapeHtml(result.kernelOutput)}</div>
     </div>
     ` : ''}
     
     ${result.compilerOutput ? `
     <div class="output-section">
-        <h2>🔧 Compiler Output</h2>
+        <h2>Compiler Output</h2>
         <div class="output-content">${this._escapeHtml(result.compilerOutput)}</div>
     </div>
     ` : ''}
     
     ${result.profilerOutput ? `
     <div class="output-section">
-        <h2>🔬 Profiler Output</h2>
+        <h2>Profiler Output</h2>
         <div class="output-content">${this._escapeHtml(result.profilerOutput)}</div>
     </div>
     ` : ''}
@@ -668,7 +668,7 @@ ${data.profilerOutput ? `## Profiler Output\n\`\`\`\n${data.profilerOutput}\n\`\
 </head>
 <body>
     <div class="error-container">
-        <h1>❌ Error</h1>
+        <h1>Error</h1>
         <pre>${this._escapeHtml(error)}</pre>
     </div>
 </body>
@@ -705,7 +705,6 @@ ${data.profilerOutput ? `## Profiler Output\n\`\`\`\n${data.profilerOutput}\n\`\
 </head>
 <body>
     <div class="empty">
-        <div class="icon">🚀</div>
         <h2>No Results Yet</h2>
         <p>Run a kernel to see results here.</p>
         <p style="margin-top: 12px; font-size: 0.9em;">

@@ -11,7 +11,7 @@ permissions:
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -28,47 +28,31 @@ jobs:
       - name: Install vsce
         run: npm install -g @vscode/vsce
 
-      - name: Get package version
-        id: package_version
+      - name: Generate version from current date/time
+        id: version
         run: |
-          VERSION=$(node -p "require('./package.json').version")
+          VERSION=$(date -u +'%Y.%-m.%-d%H%M')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Extension version: $VERSION"
+          echo "Generated version: $VERSION"
 
-      - name: Get extension name
-        id: extension_name
-        run: |
-          NAME=$(node -p "require('./package.json').name")
-          echo "name=$NAME" >> $GITHUB_OUTPUT
-          echo "Extension name: $NAME"
+      - name: Stamp version into package.json
+        run: npm version "${{ steps.version.outputs.version }}" --no-git-tag-version
 
       - name: Package extension
-        run: vsce package --out "${{ steps.extension_name.outputs.name }}-${{ steps.package_version.outputs.version }}.vsix"
-
-      - name: Get commit short SHA
-        id: commit_sha
-        run: echo "sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+        run: vsce package --out kernel-orbit-${{ steps.version.outputs.version }}.vsix
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.package_version.outputs.version }}-${{ steps.commit_sha.outputs.sha }}
-          name: Release v${{ steps.package_version.outputs.version }}
+          tag_name: v${{ steps.version.outputs.version }}
+          name: v${{ steps.version.outputs.version }}
           body: |
-            ## Kernel Orbit v${{ steps.package_version.outputs.version }}
-            
-            Automated release from commit ${{ github.sha }}
-            
-            ### Installation
+            Automated release from [`${{ github.sha }}`](https://github.com/${{ github.repository }}/commit/${{ github.sha }})
+
+            ### Install
             1. Download the `.vsix` file below
-            2. In VS Code, open Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`)
-            3. Run `Extensions: Install from VSIX...`
-            4. Select the downloaded file
-            
-            ### Changes
-            See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details.
-          files: |
-            ${{ steps.extension_name.outputs.name }}-${{ steps.package_version.outputs.version }}.vsix
+            2. In VS Code: `Cmd+Shift+P` → **Extensions: Install from VSIX…**
+            3. Select the downloaded file
+          files: kernel-orbit-${{ steps.version.outputs.version }}.vsix
           draft: false
           prerelease: false
-          generate_release_notes: true

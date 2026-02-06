@@ -70,6 +70,24 @@ export interface RunHistoryItem {
   status: 'running' | 'completed' | 'failed';
 }
 
+/**
+ * Result from executing a single notebook cell on Modal.
+ * Keys match the snake_case JSON returned by notebook_runner.py.
+ */
+export interface NotebookCellResult {
+  successful: boolean;
+  stdout: string;
+  stderr: string;
+  error: string | null;
+  error_traceback: string | null;
+  images: string[];        // base64-encoded PNG images (matplotlib)
+  html: string[];          // HTML outputs (pandas DataFrames, etc.)
+  result_repr: string | null;  // repr() of last expression
+  gpu_name: string;
+  gpu_type_requested: string;
+  execution_time_ms: number;
+}
+
 export class ModalKernelState {
   private static instance: ModalKernelState;
 
@@ -86,7 +104,6 @@ export class ModalKernelState {
 
   addToHistory(item: RunHistoryItem) {
     this.runHistory.unshift(item);
-    // Keep only last 50 runs
     if (this.runHistory.length > 50) {
       this.runHistory.pop();
     }

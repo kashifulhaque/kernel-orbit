@@ -1,31 +1,22 @@
 """
 Unified Modal runner that handles both CUDA and Triton kernels.
-This is the main entry point called by the VS Code extension.
 """
 
-import modal
-import subprocess
+import sys
 import json
 import time
-import sys
-import os
+import modal
 import tempfile
+import subprocess
 from pathlib import Path
+from typing import Dict, Any, List
 from dataclasses import dataclass, asdict, field
-from typing import Optional, Dict, Any, List
-import argparse
 
 
 AVAILABLE_GPUS = [
   {"id": "T4", "name": "NVIDIA T4", "memory_gb": 16, "architecture": "Turing"},
   {"id": "L4", "name": "NVIDIA L4", "memory_gb": 24, "architecture": "Ada Lovelace"},
   {"id": "A10G", "name": "NVIDIA A10G", "memory_gb": 24, "architecture": "Ampere"},
-  {
-    "id": "A100",
-    "name": "NVIDIA A100 (40GB)",
-    "memory_gb": 40,
-    "architecture": "Ampere",
-  },
   {
     "id": "A100-40GB",
     "name": "NVIDIA A100 (40GB)",
@@ -84,6 +75,7 @@ app = modal.App("kernel-orbit")
 @dataclass
 class KernelResult:
   """Unified result structure for both CUDA and Triton kernels."""
+
   # Status
   successful: bool = False
   kernel_type: str = ""  # "cuda" or "triton"

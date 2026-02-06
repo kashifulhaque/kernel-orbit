@@ -1,13 +1,14 @@
 {
   "name": "kernel-orbit",
   "displayName": "Kernel Orbit",
-  "description": "Kernel Orbit lets you run CUDA and Triton kernels on modal.com with GPU selection, benchmarking, and profiling",
-  "version": "0.0.1",
-  "publisher": "your-publisher-name",
+  "description": "Kernel Orbit lets you run CUDA/Triton kernels and Jupyter notebooks on modal.com GPUs with benchmarking and profiling",
+  "version": "0.2.1",
+  "publisher": "ifkash",
   "repository": {
     "type": "git",
     "url": "https://github.com/kashifulhaque/kernel-orbit"
   },
+  "icon": "resources/icon.png",
   "engines": {
     "vscode": "^1.108.1"
   },
@@ -23,14 +24,19 @@
     "modal",
     "kernel",
     "profiling",
-    "benchmark"
+    "benchmark",
+    "jupyter",
+    "notebook",
+    "remote execution"
   ],
   "activationEvents": [
     "onLanguage:cuda-cpp",
     "onLanguage:cpp",
     "onLanguage:python",
+    "onNotebook:jupyter-notebook",
     "workspaceContains:**/*.cu",
-    "workspaceContains:**/*.cuh"
+    "workspaceContains:**/*.cuh",
+    "workspaceContains:**/*.ipynb"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -82,6 +88,24 @@
         "title": "Warmup Images (Pre-build for faster runs)",
         "category": "Kernel Orbit",
         "icon": "$(flame)"
+      },
+      {
+        "command": "modalKernel.restartNotebookKernel",
+        "title": "Restart Modal GPU Kernel",
+        "category": "Kernel Orbit",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "modalKernel.terminateNotebookSession",
+        "title": "Terminate Modal GPU Session",
+        "category": "Kernel Orbit",
+        "icon": "$(stop)"
+      },
+      {
+        "command": "modalKernel.killSession",
+        "title": "Kill Session",
+        "category": "Kernel Orbit",
+        "icon": "$(close)"
       }
     ],
     "menus": {
@@ -102,6 +126,13 @@
           "command": "modalKernel.selectGpu",
           "when": "resourceExtname == .cu || resourceExtname == .py",
           "group": "1_modal"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "modalKernel.killSession",
+          "when": "view == modalKernel.sessions && viewItem == activeSession",
+          "group": "inline"
         }
       ]
     },
@@ -155,11 +186,6 @@
           "default": true,
           "description": "Enable CUDA profiling (nsys/ncu style metrics)"
         },
-        "modalKernel.pythonPath": {
-          "type": "string",
-          "default": "python3",
-          "description": "Path to Python interpreter (should have Modal installed)"
-        },
         "modalKernel.autoSave": {
           "type": "boolean",
           "default": true,
@@ -179,12 +205,8 @@
     "views": {
       "modalKernelExplorer": [
         {
-          "id": "modalKernel.gpuSelector",
-          "name": "GPU Selection"
-        },
-        {
-          "id": "modalKernel.runHistory",
-          "name": "Run History"
+          "id": "modalKernel.sessions",
+          "name": "Active Sessions"
         }
       ]
     }

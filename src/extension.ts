@@ -2,27 +2,33 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { ModalRunner } from './modalRunner';
 import { ResultsPanel } from './resultsPanel';
+import { ModalNotebookController } from './notebookController';
+import { SessionTreeProvider } from './sessionTreeProvider';
 import { ModalKernelState, AVAILABLE_GPUS, GpuConfig } from './types';
 
 let modalRunner: ModalRunner;
+let notebookController: ModalNotebookController;
 let statusBarItem: vscode.StatusBarItem;
 
-/**
- * Activate the extension
- */
 export function activate(context: vscode.ExtensionContext) {
   console.log('Kernel Orbit is now active!');
 
   modalRunner = new ModalRunner(context.extensionPath);
 
-  // Status bar
+  notebookController = new ModalNotebookController(modalRunner);
+  context.subscriptions.push({ dispose: () => notebookController.dispose() });
+
+  const sessionTree = new SessionTreeProvider(notebookController);
+  context.subscriptions.push(
+    vscode.window.registerTreeDataProvider('modalKernel.sessions', sessionTree)
+  );
+
   statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   statusBarItem.command = 'modalKernel.selectGpu';
   updateStatusBar();
   statusBarItem.show();
   context.subscriptions.push(statusBarItem);
 
-  // Register commands
   context.subscriptions.push(
     vscode.commands.registerCommand('modalKernel.runKernel', () => runKernelCommand(context)),
     vscode.commands.registerCommand('modalKernel.selectGpu', () => selectGpuCommand()),
@@ -31,26 +37,29 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('modalKernel.setupModal', () => setupModalCommand()),
     vscode.commands.registerCommand('modalKernel.checkStatus', () => checkStatusCommand()),
     vscode.commands.registerCommand('modalKernel.reloadCredentials', () => reloadCredentialsCommand()),
-    vscode.commands.registerCommand('modalKernel.warmupImages', () => warmupImagesCommand())
+    vscode.commands.registerCommand('modalKernel.warmupImages', () => warmupImagesCommand()),
+    vscode.commands.registerCommand('modalKernel.restartNotebookKernel', () => restartNotebookKernelCommand()),
+    vscode.commands.registerCommand('modalKernel.terminateNotebookSession', () => terminateNotebookSessionCommand()),
+    vscode.commands.registerCommand('modalKernel.killSession', (item: any) => {
+      if (item?.notebookUri) {
+        notebookController.terminateSession(item.notebookUri);
+      }
+    })
   );
-
-  // Update status bar when active editor changes
   context.subscriptions.push(
-    vscode.window.onDidChangeActiveTextEditor(() => updateStatusBar())
+    vscode.window.onDidChangeActiveTextEditor(() => updateStatusBar()),
+    vscode.window.onDidChangeActiveNotebookEditor(() => updateStatusBar())
   );
 }
 
-/**
- * Update the status bar item
- */
 function updateStatusBar() {
   const state = ModalKernelState.getInstance();
-  const editor = vscode.window.activeTextEditor;
+  const gpu = AVAILABLE_GPUS.find(g => g.id === state.selectedGpu);
 
+  const editor = vscode.window.activeTextEditor;
   if (editor) {
     const ext = path.extname(editor.document.fileName).toLowerCase();
     if (ext === '.cu' || ext === '.cuh' || ext === '.py') {
-      const gpu = AVAILABLE_GPUS.find(g => g.id === state.selectedGpu);
       statusBarItem.text = `$(server) ${gpu?.name || state.selectedGpu}`;
       statusBarItem.tooltip = `Click to change GPU. Current: ${state.selectedGpu}`;
       statusBarItem.show();
@@ -58,12 +67,17 @@ function updateStatusBar() {
     }
   }
 
+  const notebookEditor = vscode.window.activeNotebookEditor;
+  if (notebookEditor) {
+    statusBarItem.text = `$(server) ${gpu?.name || state.selectedGpu}`;
+    statusBarItem.tooltip = `Click to change GPU. Current: ${state.selectedGpu}`;
+    statusBarItem.show();
+    return;
+  }
+
   statusBarItem.hide();
 }
 
-/**
- * Run kernel command
- */
 async function runKernelCommand(context: vscode.ExtensionContext) {
   const editor = vscode.window.activeTextEditor;
   if (!editor) {
@@ -112,7 +126,9 @@ async function runKernelCommand(context: vscode.ExtensionContext) {
       const terminal = vscode.window.createTerminal('Modal Auth');
       terminal.show();
       terminal.sendText('# Run this command to authenticate with Modal:');
-      terminal.sendText('# modal token set --token-id YOUR_TOKEN_ID --token-secret YOUR_TOKEN_SECRET');
+      terminal.sendText('# uv run modal token set --token-id YOUR_TOKEN_ID --token-secret YOUR_TOKEN_SECRET');
+      terminal.sendText('# OR');
+      terminal.sendText('# python -m modal token set --token-id YOUR_TOKEN_ID --token-secret YOUR_TOKEN_SECRET');
       terminal.sendText('# Get your tokens from: https://modal.com/settings');
     } else if (action === 'Open Modal Dashboard') {
       vscode.env.openExternal(vscode.Uri.parse('https://modal.com/settings'));
@@ -154,9 +170,6 @@ async function runKernelCommand(context: vscode.ExtensionContext) {
   }
 }
 
-/**
- * Select GPU command
- */
 async function selectGpuCommand() {
   const state = ModalKernelState.getInstance();
 
@@ -175,19 +188,14 @@ async function selectGpuCommand() {
     state.selectedGpu = selected.detail;
     updateStatusBar();
     vscode.window.showInformationMessage(`GPU changed to ${selected.detail}`);
+    notebookController.onGpuChanged(selected.detail);
   }
 }
 
-/**
- * Show results panel command
- */
 async function showResultsCommand(context: vscode.ExtensionContext) {
   ResultsPanel.createOrShow(context.extensionUri);
 }
 
-/**
- * Export results command
- */
 async function exportResultsCommand() {
   const state = ModalKernelState.getInstance();
 
@@ -239,9 +247,6 @@ async function exportResultsCommand() {
   }
 }
 
-/**
- * Generate CSV from result
- */
 function generateCSV(result: any): string {
   const headers = [
     'GPU', 'Kernel Type', 'Execution Time (ms)', 'Std Dev (ms)',
@@ -267,9 +272,6 @@ function generateCSV(result: any): string {
   return headers.join(',') + '\n' + values.join(',');
 }
 
-/**
- * Generate Markdown from result
- */
 function generateMarkdown(result: any, fileName: string): string {
   return `# Kernel Execution Results
 
@@ -310,16 +312,10 @@ ${result.profilerOutput ? `## Profiler Output\n\`\`\`\n${result.profilerOutput}\
 `;
 }
 
-/**
- * Setup Modal command
- */
 async function setupModalCommand() {
   await modalRunner.setupModal();
 }
 
-/**
- * Reload Modal credentials from .env file
- */
 async function reloadCredentialsCommand() {
   modalRunner.clearCache();
   const status = await modalRunner.checkModalSetup();
@@ -335,9 +331,6 @@ async function reloadCredentialsCommand() {
   }
 }
 
-/**
- * Warmup Modal images - pre-build Docker images for faster subsequent runs
- */
 async function warmupImagesCommand() {
   const result = await vscode.window.showInformationMessage(
     'Pre-build Modal Docker images? This runs once and makes subsequent kernel runs much faster.',
@@ -353,17 +346,13 @@ async function warmupImagesCommand() {
   terminal.show();
 
   const scriptsPath = modalRunner.getScriptsPath();
-  const pythonPath = modalRunner.getResolvedPythonPath();
 
   terminal.sendText(`cd "${scriptsPath}"`);
-  terminal.sendText(`"${pythonPath}" -m modal run kernel_runner.py --warmup-images`);
+  terminal.sendText('uv run modal run kernel_runner.py --warmup-images');
   terminal.sendText('');
   terminal.sendText('# After this completes, subsequent kernel runs will be much faster!');
 }
 
-/**
- * Check Modal status command
- */
 async function checkStatusCommand() {
   const status = await modalRunner.checkModalSetup();
   const pythonInfo = status.pythonInfo;
@@ -385,7 +374,7 @@ async function checkStatusCommand() {
       `Modal is installed but not authenticated. Run "modal token set" to authenticate.${details}`
     );
   } else {
-    const installCmd = pythonInfo?.venvType === 'uv' ? 'uv pip install modal' : 'pip install modal';
+    const installCmd = 'uv add modal';
 
     const action = await vscode.window.showErrorMessage(
       `Modal is not installed.${details}`,
@@ -402,10 +391,36 @@ async function checkStatusCommand() {
   }
 }
 
-/**
- * Deactivate the extension
- */
+async function restartNotebookKernelCommand() {
+  const notebookEditor = vscode.window.activeNotebookEditor;
+  if (notebookEditor) {
+    await notebookController.resetState(notebookEditor.notebook.uri.toString());
+    vscode.window.showInformationMessage(
+      'Modal GPU kernel restarted. Python state cleared; container still warm.'
+    );
+  } else {
+    await notebookController.resetState();
+    vscode.window.showInformationMessage('Modal GPU kernel state reset for all notebooks.');
+  }
+}
+
+function terminateNotebookSessionCommand() {
+  const notebookEditor = vscode.window.activeNotebookEditor;
+  if (notebookEditor) {
+    notebookController.terminateSession(notebookEditor.notebook.uri.toString());
+    vscode.window.showInformationMessage(
+      'Modal GPU session terminated. A new container will start on the next cell run.'
+    );
+  } else {
+    notebookController.terminateSession();
+    vscode.window.showInformationMessage('All Modal GPU sessions terminated.');
+  }
+}
+
 export function deactivate() {
+  if (notebookController) {
+    notebookController.dispose();
+  }
   if (modalRunner) {
     modalRunner.dispose();
   }

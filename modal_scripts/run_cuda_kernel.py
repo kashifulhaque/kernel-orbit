@@ -1,15 +1,12 @@
 """
 Modal script to run CUDA C++ kernels with comprehensive profiling and metrics.
-This script is invoked by the VS Code extension.
 """
 
-import modal
-import subprocess
 import json
 import time
-import sys
-import os
+import modal
 import tempfile
+import subprocess
 from pathlib import Path
 from dataclasses import dataclass, asdict
 from typing import Optional, Dict, Any, List
