@@ -2,7 +2,7 @@
   "name": "kernel-orbit",
   "displayName": "Kernel Orbit",
   "description": "Kernel Orbit lets you run CUDA/Triton kernels and Jupyter notebooks on modal.com GPUs with benchmarking and profiling",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "publisher": "ifkash",
   "repository": {
     "type": "git",
@@ -150,7 +150,17 @@
         "modalKernel.defaultGpu": {
           "type": "string",
           "default": "T4",
-          "enum": ["T4", "L4", "A10G", "A100", "A100-40GB", "A100-80GB", "L40S", "H100", "H200", "B200"],
+          "enum": [
+            "T4",
+            "L4",
+            "A10G",
+            "A100-40GB",
+            "A100-80GB",
+            "L40S",
+            "H100",
+            "H200",
+            "B200"
+          ],
           "description": "Default GPU type to use for kernel execution"
         },
         "modalKernel.gpuCount": {
@@ -162,10 +172,10 @@
         },
         "modalKernel.timeout": {
           "type": "number",
-          "default": 300,
+          "default": 3600,
           "minimum": 10,
           "maximum": 86400,
-          "description": "Execution timeout in seconds"
+          "description": "Execution timeout in seconds (max time a single notebook cell can run)"
         },
         "modalKernel.warmupRuns": {
           "type": "number",

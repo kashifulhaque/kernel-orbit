@@ -9,7 +9,6 @@ export const AVAILABLE_GPUS: GpuConfig[] = [
   { id: "T4", name: "NVIDIA T4", memoryGb: 16, architecture: "Turing" },
   { id: "L4", name: "NVIDIA L4", memoryGb: 24, architecture: "Ada Lovelace" },
   { id: "A10G", name: "NVIDIA A10G", memoryGb: 24, architecture: "Ampere" },
-  { id: "A100", name: "NVIDIA A100 (40GB)", memoryGb: 40, architecture: "Ampere" },
   { id: "A100-40GB", name: "NVIDIA A100 (40GB)", memoryGb: 40, architecture: "Ampere" },
   { id: "A100-80GB", name: "NVIDIA A100 (80GB)", memoryGb: 80, architecture: "Ampere" },
   { id: "L40S", name: "NVIDIA L40S", memoryGb: 48, architecture: "Ada Lovelace" },

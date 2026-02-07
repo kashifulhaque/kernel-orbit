@@ -42,11 +42,16 @@ class ModalNotebookSession {
       const scriptsPath = this._modalRunner.getScriptsPath();
       const runnerScript = path.join(scriptsPath, 'notebook_runner.py');
 
+      // Get timeout from VS Code settings (in seconds)
+      const config = vscode.workspace.getConfiguration('modalKernel');
+      const timeoutSeconds = config.get<number>('timeout', 3600);
+
       const args = [
         'run', 'modal', 'run',
         runnerScript,
         '--gpu', this._gpu,
         '--interactive',
+        '--timeout', timeoutSeconds.toString(),
       ];
 
       this._outputChannel.appendLine('');

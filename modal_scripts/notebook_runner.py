@@ -34,16 +34,27 @@ import base64
 import traceback
 import contextlib
 from typing import Dict, Any, Optional
+from pathlib import Path
 
 
-notebook_image = modal.Image.debian_slim(python_version="3.12").uv_pip_install(
-  "torch",
-  "triton",
-  "numpy",
-  "matplotlib",
-  "pandas",
-  "Pillow",
-  "nvidia-ml-py",
+# Build the image and include the current module for serialization support
+notebook_image = (
+  modal.Image.debian_slim(python_version="3.12")
+  .uv_pip_install(
+    "torch",
+    "triton",
+    "numpy",
+    "matplotlib",
+    "pandas",
+    "Pillow",
+    "nvidia-ml-py",
+  )
+  .add_local_file(
+    Path(__file__).resolve(),
+    remote_path="/root/notebook_runner.py",
+    copy=True
+  )
+  .env({"PYTHONPATH": "/root"})  # Make notebook_runner importable
 )
 
 app = modal.App("kernel-orbit-notebook")
@@ -192,16 +203,20 @@ def _execute_cell_in_namespace(
   return result
 
 
-# Per-GPU session classes
-#
-# Each class is identical except for the gpu= parameter in @app.cls.
-# The scaledown_window=900 keeps it alive for 15 minutes of inactivity.
-# Namespaces are keyed by session_id so multiple notebooks can share a
-# container without leaking state.
-
-
-@app.cls(gpu="T4", image=notebook_image, scaledown_window=900, timeout=900)
-class SessionT4:
+# Session class defined at global scope with serialized=True
+# GPU type and timeout are configured at instantiation time
+# The module is baked into the image via add_local_file()
+@app.cls(image=notebook_image, scaledown_window=900, serialized=True)
+class Session:
+  """
+  Modal session class for notebook execution.
+  
+  Each class maintains per-session namespaces (keyed by session_id) so multiple
+  notebooks can share one container without leaking state.
+  
+  GPU type and timeout are specified when spawning via app.cls parameters.
+  """
+  
   @modal.enter()
   def setup(self):
     self.namespaces: Dict[str, Dict] = {}
@@ -227,183 +242,20 @@ class SessionT4:
     return get_gpu_info()
 
 
-@app.cls(gpu="L4", image=notebook_image, scaledown_window=900, timeout=900)
-class SessionL4:
-  @modal.enter()
-  def setup(self):
-    self.namespaces: Dict[str, Dict] = {}
-
-  @modal.method()
-  def execute_cell(self, session_id: str, cell_code: str) -> Dict:
-    if session_id not in self.namespaces:
-      self.namespaces[session_id] = _create_namespace()
-    return _execute_cell_in_namespace(self.namespaces[session_id], cell_code)
-
-  @modal.method()
-  def reset(self, session_id: str) -> Dict:
-    self.namespaces[session_id] = _create_namespace()
-    return {"successful": True}
-
-  @modal.method()
-  def cleanup(self, session_id: str) -> Dict:
-    self.namespaces.pop(session_id, None)
-    return {"successful": True}
-
-  @modal.method()
-  def get_info(self) -> Dict:
-    return get_gpu_info()
+def get_session_with_gpu(gpu_type: str, timeout_seconds: int):
+  """Get a Session instance configured with the specified GPU and timeout."""
+  return Session.with_options(gpu=gpu_type, timeout=timeout_seconds)()
 
 
-@app.cls(gpu="A10G", image=notebook_image, scaledown_window=900, timeout=900)
-class SessionA10G:
-  @modal.enter()
-  def setup(self):
-    self.namespaces: Dict[str, Dict] = {}
-
-  @modal.method()
-  def execute_cell(self, session_id: str, cell_code: str) -> Dict:
-    if session_id not in self.namespaces:
-      self.namespaces[session_id] = _create_namespace()
-    return _execute_cell_in_namespace(self.namespaces[session_id], cell_code)
-
-  @modal.method()
-  def reset(self, session_id: str) -> Dict:
-    self.namespaces[session_id] = _create_namespace()
-    return {"successful": True}
-
-  @modal.method()
-  def cleanup(self, session_id: str) -> Dict:
-    self.namespaces.pop(session_id, None)
-    return {"successful": True}
-
-  @modal.method()
-  def get_info(self) -> Dict:
-    return get_gpu_info()
-
-
-@app.cls(gpu="A100", image=notebook_image, scaledown_window=900, timeout=900)
-class SessionA100:
-  @modal.enter()
-  def setup(self):
-    self.namespaces: Dict[str, Dict] = {}
-
-  @modal.method()
-  def execute_cell(self, session_id: str, cell_code: str) -> Dict:
-    if session_id not in self.namespaces:
-      self.namespaces[session_id] = _create_namespace()
-    return _execute_cell_in_namespace(self.namespaces[session_id], cell_code)
-
-  @modal.method()
-  def reset(self, session_id: str) -> Dict:
-    self.namespaces[session_id] = _create_namespace()
-    return {"successful": True}
-
-  @modal.method()
-  def cleanup(self, session_id: str) -> Dict:
-    self.namespaces.pop(session_id, None)
-    return {"successful": True}
-
-  @modal.method()
-  def get_info(self) -> Dict:
-    return get_gpu_info()
-
-
-@app.cls(gpu="A100-80GB", image=notebook_image, scaledown_window=900, timeout=900)
-class SessionA100_80GB:
-  @modal.enter()
-  def setup(self):
-    self.namespaces: Dict[str, Dict] = {}
-
-  @modal.method()
-  def execute_cell(self, session_id: str, cell_code: str) -> Dict:
-    if session_id not in self.namespaces:
-      self.namespaces[session_id] = _create_namespace()
-    return _execute_cell_in_namespace(self.namespaces[session_id], cell_code)
-
-  @modal.method()
-  def reset(self, session_id: str) -> Dict:
-    self.namespaces[session_id] = _create_namespace()
-    return {"successful": True}
-
-  @modal.method()
-  def cleanup(self, session_id: str) -> Dict:
-    self.namespaces.pop(session_id, None)
-    return {"successful": True}
-
-  @modal.method()
-  def get_info(self) -> Dict:
-    return get_gpu_info()
-
-
-@app.cls(gpu="L40S", image=notebook_image, scaledown_window=900, timeout=900)
-class SessionL40S:
-  @modal.enter()
-  def setup(self):
-    self.namespaces: Dict[str, Dict] = {}
-
-  @modal.method()
-  def execute_cell(self, session_id: str, cell_code: str) -> Dict:
-    if session_id not in self.namespaces:
-      self.namespaces[session_id] = _create_namespace()
-    return _execute_cell_in_namespace(self.namespaces[session_id], cell_code)
-
-  @modal.method()
-  def reset(self, session_id: str) -> Dict:
-    self.namespaces[session_id] = _create_namespace()
-    return {"successful": True}
-
-  @modal.method()
-  def cleanup(self, session_id: str) -> Dict:
-    self.namespaces.pop(session_id, None)
-    return {"successful": True}
-
-  @modal.method()
-  def get_info(self) -> Dict:
-    return get_gpu_info()
-
-
-@app.cls(gpu="H100", image=notebook_image, scaledown_window=900, timeout=900)
-class SessionH100:
-  @modal.enter()
-  def setup(self):
-    self.namespaces: Dict[str, Dict] = {}
-
-  @modal.method()
-  def execute_cell(self, session_id: str, cell_code: str) -> Dict:
-    if session_id not in self.namespaces:
-      self.namespaces[session_id] = _create_namespace()
-    return _execute_cell_in_namespace(self.namespaces[session_id], cell_code)
-
-  @modal.method()
-  def reset(self, session_id: str) -> Dict:
-    self.namespaces[session_id] = _create_namespace()
-    return {"successful": True}
-
-  @modal.method()
-  def cleanup(self, session_id: str) -> Dict:
-    self.namespaces.pop(session_id, None)
-    return {"successful": True}
-
-  @modal.method()
-  def get_info(self) -> Dict:
-    return get_gpu_info()
+SUPPORTED_GPUS = ["T4", "L4", "A10G", "A100-40GB", "A100-80GB", "L40S", "H100"]
 
 
 @app.function(gpu="T4", image=notebook_image, timeout=60)
 def warmup_notebook_t4() -> str:
+  """Warmup function to pre-build the notebook image."""
   return "Notebook image ready on T4"
 
 
-SESSION_CLASSES: Dict[str, Any] = {
-  "T4": SessionT4,
-  "L4": SessionL4,
-  "A10G": SessionA10G,
-  "A100": SessionA100,
-  "A100-40GB": SessionA100,
-  "A100-80GB": SessionA100_80GB,
-  "L40S": SessionL40S,
-  "H100": SessionH100,
-}
 
 
 def _send(msg: Dict[str, Any]) -> None:
@@ -417,6 +269,7 @@ def main(
   gpu: str = "T4",
   interactive: bool = False,
   warmup_images: bool = False,
+  timeout: int = 3600,
 ):
   """
   Notebook session manager.
@@ -424,6 +277,12 @@ def main(
   In --interactive mode (the default for the extension), reads JSON commands
   from stdin and writes JSON responses to stdout.  The first message is
   always ``{"type":"ready", ...}`` once the GPU container is warm.
+  
+  Args:
+    gpu: GPU type (T4, L4, A10G, A100, etc.)
+    interactive: Run in interactive mode for VS Code extension
+    warmup_images: Pre-build container images
+    timeout: Maximum execution time per cell in seconds (default: 3600 = 1 hour)
   """
   if warmup_images:
     print("Pre-building notebook image …")
@@ -436,14 +295,14 @@ def main(
     print("Error: pass --interactive for session mode", file=sys.stderr)
     sys.exit(1)
 
-  SessionClass = SESSION_CLASSES.get(gpu)
-  if not SessionClass:
-    _send({"type": "error", "message": f"Unsupported GPU: {gpu}"})
+  if gpu not in SUPPORTED_GPUS:
+    _send({"type": "error", "message": f"Unsupported GPU: {gpu}. Supported: {', '.join(SUPPORTED_GPUS)}"})
     sys.exit(1)
 
+  # Create session with user-specified GPU and timeout
   import uuid
 
-  session = SessionClass()
+  session = get_session_with_gpu(gpu, timeout)
   session_id = str(uuid.uuid4())
 
   try:

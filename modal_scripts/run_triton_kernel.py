@@ -259,7 +259,7 @@ def main(
 
   Args:
       kernel_file: Path to the .py file containing Triton kernel
-      gpu: GPU type (T4, L4, A10G, A100, A100-80GB, L40S, H100, H200, B200)
+      gpu: GPU type (T4, L4, A10G, A100-40GB, A100-80GB, L40S, H100, H200, B200)
       gpu_count: Number of GPUs
       warmup: Warmup runs
       benchmark: Benchmark runs

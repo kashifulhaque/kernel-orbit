@@ -39,6 +39,18 @@ Run CUDA/Triton kernels and Jupyter notebooks on [Modal](https://modal.com) GPUs
 
 Click the GPU name in the status bar or run **Kernel Orbit: Select GPU Type** from the command palette.
 
+## Configuration
+
+Open VS Code Settings and search for "Modal Kernel" to customize:
+
+- **Timeout** (default: 3600s = 1 hour): Maximum time a single notebook cell can run
+  - Increase for long training runs (max: 86400s = 24 hours)
+  - Decrease for quick experiments to catch runaway cells
+- **Default GPU** (default: T4): GPU type to use by default
+- **GPU Count** (default: 1): Number of GPUs to attach (1-8)
+- **Warmup/Benchmark Runs**: Configure profiling behavior for kernel files
+
+
 ## Development
 
 ```bash

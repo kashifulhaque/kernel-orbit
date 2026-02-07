@@ -186,12 +186,12 @@ def run_cuda_on_a10g(
   )
 
 
-@app.function(gpu="A100", image=get_cuda_image(), timeout=600)
-def run_cuda_on_a100(
+@app.function(gpu="A100-40GB", image=get_cuda_image(), timeout=600)
+def run_cuda_on_a100_40gb(
   kernel_source: str, warmup_runs: int, benchmark_runs: int, enable_profiling: bool
 ) -> Dict:
   return _run_cuda_kernel_impl(
-    kernel_source, "A100", warmup_runs, benchmark_runs, enable_profiling
+    kernel_source, "A100-40GB", warmup_runs, benchmark_runs, enable_profiling
   )
 
 
@@ -351,8 +351,8 @@ def run_triton_on_a10g(
   )
 
 
-@app.function(gpu="A100", image=get_triton_image(), timeout=600)
-def run_triton_on_a100(
+@app.function(gpu="A100-40GB", image=get_triton_image(), timeout=600)
+def run_triton_on_a100_40gb(
   kernel_source: str, warmup_runs: int, benchmark_runs: int, enable_profiling: bool
 ) -> Dict:
   return _run_triton_kernel_impl(
@@ -584,8 +584,7 @@ def main(
       "T4": run_cuda_on_t4,
       "L4": run_cuda_on_l4,
       "A10G": run_cuda_on_a10g,
-      "A100": run_cuda_on_a100,
-      "A100-40GB": run_cuda_on_a100,
+      "A100-40GB": run_cuda_on_a100_40gb,
       "A100-80GB": run_cuda_on_a100_80gb,
       "L40S": run_cuda_on_l40s,
       "H100": run_cuda_on_h100,
@@ -594,8 +593,7 @@ def main(
       "T4": run_triton_on_t4,
       "L4": run_triton_on_l4,
       "A10G": run_triton_on_a10g,
-      "A100": run_triton_on_a100,
-      "A100-40GB": run_triton_on_a100,
+      "A100-40GB": run_triton_on_a100_40gb,
       "A100-80GB": run_triton_on_a100_80gb,
       "L40S": run_triton_on_l40s,
       "H100": run_triton_on_h100,
