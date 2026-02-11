@@ -1,6 +1,7 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { SessionInfo, ModalNotebookController } from './notebookController';
+import { KernelSessionState } from './types';
 
 class SessionTreeItem extends vscode.TreeItem {
   public readonly notebookUri: string;
@@ -10,9 +11,26 @@ class SessionTreeItem extends vscode.TreeItem {
     super(filename, vscode.TreeItemCollapsibleState.None);
 
     this.notebookUri = session.notebookUri;
-    this.description = `${session.gpu} — ${session.ready ? 'ready' : 'starting…'}`;
-    this.tooltip = `GPU: ${session.gpuName || session.gpu}\nStatus: ${session.ready ? 'Ready' : 'Starting…'}`;
-    this.iconPath = new vscode.ThemeIcon(session.ready ? 'pass-filled' : 'sync~spin');
+
+    const stateLabels: Record<KernelSessionState, string> = {
+      starting: 'starting…',
+      idle: 'idle',
+      busy: 'executing…',
+      disconnected: 'disconnected',
+    };
+    const stateIcons: Record<KernelSessionState, string> = {
+      starting: 'sync~spin',
+      idle: 'pass-filled',
+      busy: 'loading~spin',
+      disconnected: 'error',
+    };
+
+    const label = stateLabels[session.state] || session.state;
+    const icon = stateIcons[session.state] || 'question';
+
+    this.description = `${session.gpu} — ${label}`;
+    this.tooltip = `GPU: ${session.gpuName || session.gpu}\nStatus: ${label}`;
+    this.iconPath = new vscode.ThemeIcon(icon);
     this.contextValue = 'activeSession';
   }
 }

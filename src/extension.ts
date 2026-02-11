@@ -4,7 +4,7 @@ import { ModalRunner } from './modalRunner';
 import { ResultsPanel } from './resultsPanel';
 import { ModalNotebookController } from './notebookController';
 import { SessionTreeProvider } from './sessionTreeProvider';
-import { ModalKernelState, AVAILABLE_GPUS, GpuConfig } from './types';
+import { ModalKernelState, AVAILABLE_GPUS, GpuConfig, KernelSessionState } from './types';
 
 let modalRunner: ModalRunner;
 let notebookController: ModalNotebookController;
@@ -48,7 +48,8 @@ export function activate(context: vscode.ExtensionContext) {
   );
   context.subscriptions.push(
     vscode.window.onDidChangeActiveTextEditor(() => updateStatusBar()),
-    vscode.window.onDidChangeActiveNotebookEditor(() => updateStatusBar())
+    vscode.window.onDidChangeActiveNotebookEditor(() => updateStatusBar()),
+    notebookController.onSessionsChanged(() => updateStatusBar())
   );
 }
 
@@ -69,8 +70,33 @@ function updateStatusBar() {
 
   const notebookEditor = vscode.window.activeNotebookEditor;
   if (notebookEditor) {
-    statusBarItem.text = `$(server) ${gpu?.name || state.selectedGpu}`;
-    statusBarItem.tooltip = `Click to change GPU. Current: ${state.selectedGpu}`;
+    const uri = notebookEditor.notebook.uri.toString();
+    const sessionState = notebookController.getSessionState(uri);
+    const gpuLabel = gpu?.name || state.selectedGpu;
+
+    if (sessionState) {
+      switch (sessionState) {
+        case 'starting':
+          statusBarItem.text = `$(sync~spin) Starting ${gpuLabel}…`;
+          statusBarItem.tooltip = `Provisioning GPU container…\nGPU: ${state.selectedGpu}`;
+          break;
+        case 'busy':
+          statusBarItem.text = `$(loading~spin) Running on ${gpuLabel}`;
+          statusBarItem.tooltip = `Executing cell on remote GPU\nGPU: ${state.selectedGpu}`;
+          break;
+        case 'idle':
+          statusBarItem.text = `$(check) ${gpuLabel}`;
+          statusBarItem.tooltip = `GPU session ready\nClick to change GPU. Current: ${state.selectedGpu}`;
+          break;
+        case 'disconnected':
+          statusBarItem.text = `$(error) ${gpuLabel} (disconnected)`;
+          statusBarItem.tooltip = `Session disconnected. Run a cell to reconnect.\nGPU: ${state.selectedGpu}`;
+          break;
+      }
+    } else {
+      statusBarItem.text = `$(server) ${gpuLabel}`;
+      statusBarItem.tooltip = `Click to change GPU. Current: ${state.selectedGpu}`;
+    }
     statusBarItem.show();
     return;
   }

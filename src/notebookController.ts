@@ -2,18 +2,20 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { ModalRunner } from './modalRunner';
 import { ChildProcess, spawn } from 'child_process';
-import { ModalKernelState, NotebookCellResult } from './types';
+import { KernelSessionState, ModalKernelState, NotebookCellResult } from './types';
 
 export interface SessionInfo {
   notebookUri: string;
   gpu: string;
   gpuName: string;
   ready: boolean;
+  state: KernelSessionState;
 }
 
 class ModalNotebookSession {
   private _process: ChildProcess | null = null;
   private _ready = false;
+  private _state: KernelSessionState = 'starting';
   private _gpu: string;
   private _gpuName = '';
   private _stdoutBuffer = '';
@@ -22,6 +24,9 @@ class ModalNotebookSession {
   private _readyReject: ((err: Error) => void) | null = null;
   private _pendingResolve: ((msg: any) => void) | null = null;
   private _pendingReject: ((err: Error) => void) | null = null;
+
+  private _activeExecution: vscode.NotebookCellExecution | null = null;
+  private _streamedOutputCount = 0;
 
   private readonly _modalRunner: ModalRunner;
   private readonly _outputChannel: vscode.OutputChannel;
@@ -35,6 +40,42 @@ class ModalNotebookSession {
   isReady(): boolean { return this._ready; }
   getGpu(): string { return this._gpu; }
   getGpuName(): string { return this._gpuName; }
+  getState(): KernelSessionState { return this._state; }
+  setState(s: KernelSessionState): void { this._state = s; }
+  getStreamedOutputCount(): number { return this._streamedOutputCount; }
+
+  setActiveExecution(exec: vscode.NotebookCellExecution | null): void {
+    this._activeExecution = exec;
+    this._streamedOutputCount = 0;
+  }
+
+  interrupt(): void {
+    if (!this._process) {
+      this._resolvePendingAsInterrupted();
+      return;
+    }
+    try {
+      this._process.stdin!.write(JSON.stringify({ action: 'interrupt' }) + '\n');
+    } catch {
+      this._resolvePendingAsInterrupted();
+    }
+  }
+
+  private _resolvePendingAsInterrupted(): void {
+    if (this._pendingResolve) {
+      this._pendingResolve({
+        successful: false,
+        interrupted: true,
+        stdout: '', stderr: '',
+        error: 'Execution interrupted', error_traceback: null,
+        images: [], html: [], svg: [], latex: [], markdown: [],
+        json_outputs: [], display_outputs: [], result_repr: null,
+        execution_time_ms: 0,
+      });
+      this._pendingResolve = null;
+      this._pendingReject = null;
+    }
+  }
 
   start(timeoutMs = 180_000): Promise<void> {
     return new Promise<void>((resolve, reject) => {
@@ -67,6 +108,7 @@ class ModalNotebookSession {
 
       this._process.on('close', (code: number | null) => {
         this._ready = false;
+        this._state = 'disconnected';
         const msg = `Session process exited (code ${code})`;
         this._outputChannel.appendLine(`[Session] ${msg}`);
         if (this._readyReject) {
@@ -147,13 +189,42 @@ class ModalNotebookSession {
     }
   }
 
+  private _appendStreamedOutput(output: vscode.NotebookCellOutput): void {
+    if (!this._activeExecution) { return; }
+    if (this._streamedOutputCount === 0) {
+      this._activeExecution.replaceOutput([output]);
+    } else {
+      this._activeExecution.appendOutput([output]);
+    }
+    this._streamedOutputCount++;
+  }
+
   private _dispatchMessage(msg: any): void {
     const type: string = msg.type;
     if (type === 'ready') {
       this._ready = true;
+      this._state = 'idle';
       this._gpuName = msg.gpu_name ?? '';
       this._outputChannel.appendLine(`[Session] Ready — GPU: ${this._gpuName} (${msg.gpu})`);
       if (this._readyResolve) { this._readyResolve(); this._readyResolve = null; this._readyReject = null; }
+      return;
+    }
+    if (type === 'stream') {
+      const item = msg.stream === 'stderr'
+        ? vscode.NotebookCellOutputItem.stderr(msg.text)
+        : vscode.NotebookCellOutputItem.stdout(msg.text);
+      this._appendStreamedOutput(new vscode.NotebookCellOutput([item]));
+      return;
+    }
+    if (type === 'display') {
+      const item = msg.mime.startsWith('image/')
+        ? new vscode.NotebookCellOutputItem(Buffer.from(msg.data, 'base64'), msg.mime)
+        : vscode.NotebookCellOutputItem.text(msg.data, msg.mime);
+      this._appendStreamedOutput(new vscode.NotebookCellOutput([item]));
+      return;
+    }
+    if (type === 'interrupted') {
+      this._resolvePendingAsInterrupted();
       return;
     }
     if (type === 'result' || type === 'reset' || type === 'terminated') {
@@ -177,6 +248,7 @@ export class ModalNotebookController {
   private _sessions: Map<string, ModalNotebookSession> = new Map();
   private _startPromises: Map<string, Promise<void>> = new Map();
   private _executingNotebooks: Set<string> = new Set();
+  private _executionCancellation: Map<string, vscode.CancellationTokenSource> = new Map();
 
   private readonly _outputChannel: vscode.OutputChannel;
   private readonly _modalRunner: ModalRunner;
@@ -213,9 +285,15 @@ export class ModalNotebookController {
         gpu: session.getGpu(),
         gpuName: session.getGpuName(),
         ready: session.isReady(),
+        state: session.getState(),
       });
     }
     return result;
+  }
+
+  getSessionState(notebookUri: string): KernelSessionState | null {
+    const session = this._sessions.get(notebookUri);
+    return session ? session.getState() : null;
   }
 
   private async _warmupSession(notebook: vscode.NotebookDocument): Promise<void> {
@@ -274,11 +352,25 @@ export class ModalNotebookController {
       vscode.window.showWarningMessage('Cells are already executing on Modal. Please wait or interrupt first.');
       return;
     }
+
+    const cts = new vscode.CancellationTokenSource();
+    this._executionCancellation.set(uri, cts);
     this._executingNotebooks.add(uri);
+
+    const session = this._sessions.get(uri);
+    if (session) { session.setState('busy'); this._onSessionsChanged.fire(); }
+
     try {
-      for (const cell of cells) { await this._executeCell(cell, notebook); }
+      for (const cell of cells) {
+        if (cts.token.isCancellationRequested) { break; }
+        await this._executeCell(cell, notebook);
+      }
     } finally {
       this._executingNotebooks.delete(uri);
+      this._executionCancellation.delete(uri);
+      cts.dispose();
+      const s = this._sessions.get(uri);
+      if (s && s.getState() === 'busy') { s.setState('idle'); this._onSessionsChanged.fire(); }
     }
   }
 
@@ -313,16 +405,42 @@ export class ModalNotebookController {
       }
 
       const session = await this._ensureSession(notebookUri, gpuType);
-      const result = await session.executeCell(cell.document.getText());
 
-      if (result.successful) {
-        this._buildSuccessOutputs(execution, result);
+      // Enable progressive output streaming
+      session.setActiveExecution(execution);
+      const result = await session.executeCell(cell.document.getText());
+      const streamed = session.getStreamedOutputCount() > 0;
+      session.setActiveExecution(null);
+
+      if (result.interrupted) {
+        if (streamed) {
+          execution.appendOutput([new vscode.NotebookCellOutput([
+            vscode.NotebookCellOutputItem.stderr('Execution interrupted\n')
+          ])]);
+        } else {
+          execution.replaceOutput([new vscode.NotebookCellOutput([
+            vscode.NotebookCellOutputItem.stderr('Execution interrupted\n')
+          ])]);
+        }
+        execution.end(false, Date.now());
+      } else if (result.successful) {
+        if (streamed) {
+          this._appendRemainingOutputs(execution, result);
+        } else {
+          this._buildSuccessOutputs(execution, result);
+        }
         execution.end(true, Date.now());
       } else {
-        this._buildErrorOutputs(execution, result);
+        if (streamed) {
+          this._appendErrorOutputs(execution, result);
+        } else {
+          this._buildErrorOutputs(execution, result);
+        }
         execution.end(false, Date.now());
       }
     } catch (error) {
+      const session = this._sessions.get(notebookUri);
+      if (session) { session.setActiveExecution(null); }
       this._sessions.delete(notebookUri);
       this._onSessionsChanged.fire();
       execution.replaceOutput([new vscode.NotebookCellOutput([
@@ -335,8 +453,21 @@ export class ModalNotebookController {
   private _buildSuccessOutputs(execution: vscode.NotebookCellExecution, result: NotebookCellResult): void {
     const outputs: vscode.NotebookCellOutput[] = [];
     if (result.stdout) { outputs.push(new vscode.NotebookCellOutput([vscode.NotebookCellOutputItem.stdout(result.stdout)])); }
+    // Mid-cell display() calls
+    if (result.display_outputs) {
+      for (const item of result.display_outputs) {
+        const outItem = item.mime.startsWith('image/')
+          ? new vscode.NotebookCellOutputItem(Buffer.from(item.data, 'base64'), item.mime)
+          : vscode.NotebookCellOutputItem.text(item.data, item.mime);
+        outputs.push(new vscode.NotebookCellOutput([outItem]));
+      }
+    }
     if (result.images) { for (const img of result.images) { outputs.push(new vscode.NotebookCellOutput([new vscode.NotebookCellOutputItem(Buffer.from(img, 'base64'), 'image/png')])); } }
     if (result.html) { for (const html of result.html) { outputs.push(new vscode.NotebookCellOutput([vscode.NotebookCellOutputItem.text(html, 'text/html')])); } }
+    if (result.svg) { for (const svg of result.svg) { outputs.push(new vscode.NotebookCellOutput([vscode.NotebookCellOutputItem.text(svg, 'image/svg+xml')])); } }
+    if (result.latex) { for (const tex of result.latex) { outputs.push(new vscode.NotebookCellOutput([vscode.NotebookCellOutputItem.text(tex, 'text/latex')])); } }
+    if (result.markdown) { for (const md of result.markdown) { outputs.push(new vscode.NotebookCellOutput([vscode.NotebookCellOutputItem.text(md, 'text/markdown')])); } }
+    if (result.json_outputs) { for (const j of result.json_outputs) { outputs.push(new vscode.NotebookCellOutput([vscode.NotebookCellOutputItem.text(j, 'application/json')])); } }
     if (result.result_repr) { outputs.push(new vscode.NotebookCellOutput([vscode.NotebookCellOutputItem.text(result.result_repr)])); }
     if (result.stderr) { outputs.push(new vscode.NotebookCellOutput([vscode.NotebookCellOutputItem.stderr(result.stderr)])); }
     execution.replaceOutput(outputs);
@@ -351,13 +482,40 @@ export class ModalNotebookController {
     execution.replaceOutput(outputs);
   }
 
+  /** Append only remaining metadata outputs after progressive streaming */
+  private _appendRemainingOutputs(execution: vscode.NotebookCellExecution, result: NotebookCellResult): void {
+    if (result.result_repr) {
+      execution.appendOutput([new vscode.NotebookCellOutput([
+        vscode.NotebookCellOutputItem.text(result.result_repr)
+      ])]);
+    }
+  }
+
+  /** Append error output after progressive streaming */
+  private _appendErrorOutputs(execution: vscode.NotebookCellExecution, result: NotebookCellResult): void {
+    if (result.stderr) {
+      execution.appendOutput([new vscode.NotebookCellOutput([
+        vscode.NotebookCellOutputItem.stderr(result.stderr)
+      ])]);
+    }
+    const err = new Error(result.error || 'Unknown error');
+    if (result.error_traceback) { err.stack = result.error_traceback; }
+    execution.appendOutput([new vscode.NotebookCellOutput([
+      vscode.NotebookCellOutputItem.error(err)
+    ])]);
+  }
+
   private async _interrupt(notebook: vscode.NotebookDocument): Promise<void> {
     const uri = notebook.uri.toString();
     const session = this._sessions.get(uri);
-    if (session) { session.terminate(); this._sessions.delete(uri); }
-    this._executingNotebooks.delete(uri);
+    if (session) {
+      session.interrupt();
+    }
+    // Cancel remaining queued cells
+    const cts = this._executionCancellation.get(uri);
+    if (cts) { cts.cancel(); }
     this._onSessionsChanged.fire();
-    this._outputChannel.appendLine('[Notebook] Execution interrupted — session terminated');
+    this._outputChannel.appendLine('[Notebook] Execution interrupted');
   }
 
   async resetState(notebookUri?: string): Promise<void> {

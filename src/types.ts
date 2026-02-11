@@ -17,6 +17,8 @@ export const AVAILABLE_GPUS: GpuConfig[] = [
   { id: "B200", name: "NVIDIA B200", memoryGb: 192, architecture: "Blackwell" },
 ];
 
+export type KernelSessionState = 'starting' | 'idle' | 'busy' | 'disconnected';
+
 export interface KernelResult {
   successful: boolean;
   kernelType: string;
@@ -75,13 +77,19 @@ export interface RunHistoryItem {
  */
 export interface NotebookCellResult {
   successful: boolean;
+  interrupted?: boolean;
   stdout: string;
   stderr: string;
   error: string | null;
   error_traceback: string | null;
-  images: string[];        // base64-encoded PNG images (matplotlib)
-  html: string[];          // HTML outputs (pandas DataFrames, etc.)
-  result_repr: string | null;  // repr() of last expression
+  images: string[];                                    // base64-encoded PNG images (matplotlib)
+  html: string[];                                      // HTML outputs (pandas DataFrames, etc.)
+  svg: string[];                                       // SVG outputs
+  latex: string[];                                     // LaTeX outputs
+  markdown: string[];                                  // Markdown outputs
+  json_outputs: string[];                              // JSON outputs
+  display_outputs: Array<{mime: string; data: string}>; // Mid-cell display() calls
+  result_repr: string | null;                          // repr() of last expression
   gpu_name: string;
   gpu_type_requested: string;
   execution_time_ms: number;
