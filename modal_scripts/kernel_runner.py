@@ -2,6 +2,7 @@
 Unified Modal runner that handles both CUDA and Triton kernels.
 """
 
+import os
 import sys
 import json
 import time
@@ -11,6 +12,14 @@ import subprocess
 from pathlib import Path
 from typing import Dict, Any, List
 from dataclasses import dataclass, asdict, field
+
+# Force UTF-8 for stdout/stderr on Windows to avoid charmap encoding errors
+if sys.platform == "win32":
+  os.environ.setdefault("PYTHONUTF8", "1")
+  if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+  if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 
 AVAILABLE_GPUS = [
@@ -222,6 +231,24 @@ def run_cuda_on_h100(
   )
 
 
+@app.function(gpu="H200", image=get_cuda_image(), timeout=600)
+def run_cuda_on_h200(
+  kernel_source: str, warmup_runs: int, benchmark_runs: int, enable_profiling: bool
+) -> Dict:
+  return _run_cuda_kernel_impl(
+    kernel_source, "H200", warmup_runs, benchmark_runs, enable_profiling
+  )
+
+
+@app.function(gpu="B200", image=get_cuda_image(), timeout=600)
+def run_cuda_on_b200(
+  kernel_source: str, warmup_runs: int, benchmark_runs: int, enable_profiling: bool
+) -> Dict:
+  return _run_cuda_kernel_impl(
+    kernel_source, "B200", warmup_runs, benchmark_runs, enable_profiling
+  )
+
+
 def _run_cuda_kernel_impl(
   kernel_source: str,
   gpu_type: str,
@@ -384,6 +411,24 @@ def run_triton_on_h100(
 ) -> Dict:
   return _run_triton_kernel_impl(
     kernel_source, "H100", warmup_runs, benchmark_runs, enable_profiling
+  )
+
+
+@app.function(gpu="H200", image=get_triton_image(), timeout=600)
+def run_triton_on_h200(
+  kernel_source: str, warmup_runs: int, benchmark_runs: int, enable_profiling: bool
+) -> Dict:
+  return _run_triton_kernel_impl(
+    kernel_source, "H200", warmup_runs, benchmark_runs, enable_profiling
+  )
+
+
+@app.function(gpu="B200", image=get_triton_image(), timeout=600)
+def run_triton_on_b200(
+  kernel_source: str, warmup_runs: int, benchmark_runs: int, enable_profiling: bool
+) -> Dict:
+  return _run_triton_kernel_impl(
+    kernel_source, "B200", warmup_runs, benchmark_runs, enable_profiling
   )
 
 
@@ -588,6 +633,8 @@ def main(
       "A100-80GB": run_cuda_on_a100_80gb,
       "L40S": run_cuda_on_l40s,
       "H100": run_cuda_on_h100,
+      "H200": run_cuda_on_h200,
+      "B200": run_cuda_on_b200,
     },
     "triton": {
       "T4": run_triton_on_t4,
@@ -597,6 +644,8 @@ def main(
       "A100-80GB": run_triton_on_a100_80gb,
       "L40S": run_triton_on_l40s,
       "H100": run_triton_on_h100,
+      "H200": run_triton_on_h200,
+      "B200": run_triton_on_b200,
     },
   }
 

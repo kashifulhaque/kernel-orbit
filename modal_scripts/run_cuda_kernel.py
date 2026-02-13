@@ -2,6 +2,8 @@
 Modal script to run CUDA C++ kernels with comprehensive profiling and metrics.
 """
 
+import os
+import sys
 import json
 import time
 import modal
@@ -10,6 +12,14 @@ import subprocess
 from pathlib import Path
 from dataclasses import dataclass, asdict
 from typing import Optional, Dict, Any, List
+
+# Force UTF-8 for stdout/stderr on Windows to avoid charmap encoding errors
+if sys.platform == "win32":
+  os.environ.setdefault("PYTHONUTF8", "1")
+  if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+  if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 
 def get_cuda_image(cuda_version: str = "13.1.1"):

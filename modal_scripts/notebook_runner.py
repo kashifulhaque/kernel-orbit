@@ -31,6 +31,7 @@ Protocol (stdin -> stdout):
 """
 
 import io
+import os
 import ast
 import sys
 import json
@@ -44,6 +45,14 @@ import contextlib
 import subprocess
 from typing import Dict, Any, Optional
 from pathlib import Path
+
+# Force UTF-8 for stdout/stderr on Windows to avoid charmap encoding errors
+if sys.platform == "win32":
+  os.environ.setdefault("PYTHONUTF8", "1")
+  if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+  if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 
 # Build the image and include the current module for serialization support
@@ -579,7 +588,7 @@ def get_session_with_gpu(gpu_type: str, timeout_seconds: int):
   return Session.with_options(gpu=gpu_type, timeout=timeout_seconds)()
 
 
-SUPPORTED_GPUS = ["T4", "L4", "A10G", "A100-40GB", "A100-80GB", "L40S", "H100"]
+SUPPORTED_GPUS = ["T4", "L4", "A10G", "A100-40GB", "A100-80GB", "L40S", "H100", "H200", "B200"]
 
 
 @app.function(gpu="T4", image=notebook_image, timeout=60)

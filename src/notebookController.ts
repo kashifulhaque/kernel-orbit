@@ -101,7 +101,7 @@ class ModalNotebookSession {
 
       const env = this._modalRunner.getModalEnv();
 
-      this._process = spawn('uv', args, { cwd: root || scriptsPath, env });
+      this._process = spawn('uv', args, { cwd: root || scriptsPath, env, shell: true });
 
       this._process.stdout!.on('data', (data: Buffer) => this._onStdoutData(data));
       this._process.stderr!.on('data', (data: Buffer) => this._outputChannel.append(data.toString()));
@@ -173,7 +173,16 @@ class ModalNotebookSession {
     try { this._process.stdin!.write(JSON.stringify({ action: 'terminate' }) + '\n'); } catch { /* closed */ }
     const proc = this._process;
     this._process = null;
-    setTimeout(() => { try { proc.kill('SIGTERM'); } catch { /* gone */ } }, 3000);
+    setTimeout(() => {
+      try {
+        if (process.platform === 'win32') {
+          // On Windows, kill the entire process tree since shell: true spawns cmd.exe
+          spawn('taskkill', ['/pid', String(proc.pid), '/T', '/F'], { detached: true, stdio: 'ignore', shell: true }).unref();
+        } else {
+          proc.kill('SIGTERM');
+        }
+      } catch { /* gone */ }
+    }, 3000);
   }
 
   private _onStdoutData(data: Buffer): void {

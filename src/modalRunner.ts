@@ -74,6 +74,8 @@ export class ModalRunner {
 
     env['PYTHONUNBUFFERED'] = '1';
     env['PYTHONDONTWRITEBYTECODE'] = '1';
+    env['PYTHONIOENCODING'] = 'utf-8';
+    env['PYTHONUTF8'] = '1';
     return env;
   }
 
@@ -346,7 +348,8 @@ MODAL_TOKEN_SECRET=your-token-secret-here
       const modalEnv = this.getModalEnv();
       const childProcess = spawn('uv', args, {
         cwd: root || scriptsPath,
-        env: modalEnv
+        env: modalEnv,
+        shell: true
       });
 
       let stderr = '';
