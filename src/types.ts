@@ -75,6 +75,46 @@ export interface RunHistoryItem {
   status: 'running' | 'completed' | 'failed';
 }
 
+export type ProfilingLimitingFactor = 'warps' | 'registers' | 'shared_memory' | 'blocks' | 'unknown';
+export type ProfilingTool = 'ncu' | 'torch_profiler' | 'nvcc_fallback';
+
+export interface KernelProfilingMetrics {
+  kernelName: string;
+  executionTimeUs: number;
+  smEfficiencyPercent: number;
+  memoryThroughputGbs: number;
+  achievedOccupancyPercent: number;
+  registersPerThread: number;
+  blockSize: [number, number, number];
+  gridSize: [number, number, number];
+  sharedMemoryBytes: number;
+  limitingFactor: ProfilingLimitingFactor;
+}
+
+export interface GpuTimelineSample {
+  timestampMs: number;
+  gpuUtilizationPercent: number;
+  memoryUtilizationPercent: number;
+  memoryUsedMb: number;
+  powerDrawW: number;
+  temperatureC: number;
+  smClockMhz: number;
+  memClockMhz: number;
+}
+
+export interface ProfilingResult {
+  successful: boolean;
+  errorMessage: string;
+  kernelMetrics: KernelProfilingMetrics[];
+  gpuName: string;
+  computeCapability: string;
+  rawNcuOutput: string;
+  profilingToolUsed: ProfilingTool;
+  timelineSamples?: GpuTimelineSample[];
+  gpuPeakMemoryBwGbs?: number;
+  gpuPowerLimitW?: number;
+}
+
 /**
  * Result from executing a single notebook cell on Modal.
  * Keys match the snake_case JSON returned by notebook_runner.py.
@@ -105,6 +145,9 @@ export class ModalKernelState {
   selectedGpu: string = 'T4';
   runHistory: RunHistoryItem[] = [];
   currentRun: RunHistoryItem | null = null;
+  lastProfilingResult: ProfilingResult | null = null;
+  /** Maps filePath to its most recent profiling result */
+  profilingResults: Map<string, ProfilingResult> = new Map();
 
   static getInstance(): ModalKernelState {
     if (!ModalKernelState.instance) {

@@ -2,7 +2,7 @@
   "name": "kernel-orbit",
   "displayName": "Kernel Orbit",
   "description": "Kernel Orbit lets you run CUDA/Triton kernels and Jupyter notebooks on modal.com GPUs with benchmarking and profiling",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "publisher": "ifkash",
   "repository": {
     "type": "git",
@@ -111,6 +111,18 @@
         "command": "modalKernel.selectGpuFromTree",
         "title": "Select GPU",
         "category": "Kernel Orbit"
+      },
+      {
+        "command": "modalKernel.profileKernel",
+        "title": "Profile Kernel on GPU",
+        "category": "Kernel Orbit",
+        "icon": "$(flame)"
+      },
+      {
+        "command": "modalKernel.showProfiling",
+        "title": "Show Profiling Results",
+        "category": "Kernel Orbit",
+        "icon": "$(dashboard)"
       }
     ],
     "menus": {
@@ -125,11 +137,21 @@
           "command": "modalKernel.runKernel",
           "when": "resourceExtname == .cu || resourceExtname == .py",
           "group": "navigation"
+        },
+        {
+          "command": "modalKernel.profileKernel",
+          "when": "resourceExtname == .cu || resourceExtname == .py",
+          "group": "navigation"
         }
       ],
       "editor/context": [
         {
           "command": "modalKernel.runKernel",
+          "when": "resourceExtname == .cu || resourceExtname == .py",
+          "group": "1_modal"
+        },
+        {
+          "command": "modalKernel.profileKernel",
           "when": "resourceExtname == .cu || resourceExtname == .py",
           "group": "1_modal"
         },
@@ -152,6 +174,12 @@
         "command": "modalKernel.runKernel",
         "key": "ctrl+shift+r",
         "mac": "cmd+shift+r",
+        "when": "editorTextFocus && (resourceExtname == .cu || resourceExtname == .py)"
+      },
+      {
+        "command": "modalKernel.profileKernel",
+        "key": "ctrl+shift+p",
+        "mac": "cmd+shift+i",
         "when": "editorTextFocus && (resourceExtname == .cu || resourceExtname == .py)"
       }
     ],
@@ -211,6 +239,16 @@
           "type": "boolean",
           "default": true,
           "description": "Automatically save file before running"
+        },
+        "modalKernel.profilingMode": {
+          "type": "string",
+          "default": "summary",
+          "enum": ["summary", "full"],
+          "enumDescriptions": [
+            "Collect basic profiling metrics (SM efficiency, memory throughput, occupancy, execution time)",
+            "Collect full profiling metrics including roofline and cache data (slower)"
+          ],
+          "description": "Nsight Compute profiling data collection level"
         }
       }
     },

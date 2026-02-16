@@ -2,12 +2,17 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { ModalRunner } from './modalRunner';
 import { ResultsPanel } from './resultsPanel';
+import { ProfilingPanel } from './profilingPanel';
+import { ProfilingRunner } from './profilingRunner';
+import { KernelDecorationProvider } from './kernelDecorationProvider';
 import { ModalNotebookController } from './notebookController';
 import { SessionTreeProvider } from './sessionTreeProvider';
 import { GpuPickerProvider } from './gpuPickerProvider';
 import { ModalKernelState, AVAILABLE_GPUS, GpuConfig, KernelSessionState } from './types';
 
 let modalRunner: ModalRunner;
+let profilingRunner: ProfilingRunner;
+let decorationProvider: KernelDecorationProvider;
 let notebookController: ModalNotebookController;
 let statusBarItem: vscode.StatusBarItem;
 let gpuPicker: GpuPickerProvider;
@@ -16,6 +21,9 @@ export function activate(context: vscode.ExtensionContext) {
   console.log('Kernel Orbit is now active!');
 
   modalRunner = new ModalRunner(context.extensionPath);
+  profilingRunner = new ProfilingRunner(modalRunner);
+  decorationProvider = new KernelDecorationProvider();
+  context.subscriptions.push(decorationProvider);
 
   notebookController = new ModalNotebookController(modalRunner);
   context.subscriptions.push({ dispose: () => notebookController.dispose() });
@@ -47,6 +55,8 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('modalKernel.warmupImages', () => warmupImagesCommand()),
     vscode.commands.registerCommand('modalKernel.restartNotebookKernel', () => restartNotebookKernelCommand()),
     vscode.commands.registerCommand('modalKernel.terminateNotebookSession', () => terminateNotebookSessionCommand()),
+    vscode.commands.registerCommand('modalKernel.profileKernel', () => profileKernelCommand(context)),
+    vscode.commands.registerCommand('modalKernel.showProfiling', () => showProfilingCommand(context)),
     vscode.commands.registerCommand('modalKernel.killSession', (item: any) => {
       if (item?.notebookUri) {
         notebookController.terminateSession(item.notebookUri);
@@ -229,6 +239,69 @@ async function selectGpuCommand() {
 
 async function showResultsCommand(context: vscode.ExtensionContext) {
   ResultsPanel.createOrShow(context.extensionUri);
+}
+
+async function profileKernelCommand(context: vscode.ExtensionContext) {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor) {
+    vscode.window.showWarningMessage('No active editor. Open a .cu or .py file to profile.');
+    return;
+  }
+
+  const filePath = editor.document.fileName;
+  const ext = path.extname(filePath).toLowerCase();
+
+  if (ext !== '.cu' && ext !== '.cuh' && ext !== '.py') {
+    vscode.window.showWarningMessage('Unsupported file type. Open a .cu or .py file to profile.');
+    return;
+  }
+
+  const setupStatus = await modalRunner.checkModalSetup();
+  if (!setupStatus.installed || !setupStatus.authenticated) {
+    vscode.window.showErrorMessage(
+      'Modal is not set up. Run "Kernel Orbit: Setup Modal Environment" first.'
+    );
+    return;
+  }
+
+  const config = vscode.workspace.getConfiguration('modalKernel');
+  if (config.get<boolean>('autoSave', true)) {
+    await editor.document.save();
+  }
+
+  const state = ModalKernelState.getInstance();
+  const gpuType = state.selectedGpu;
+
+  const profilingPanel = ProfilingPanel.createOrShow(context.extensionUri);
+  profilingPanel.showLoading(`Profiling kernel on ${gpuType}...`);
+
+  try {
+    const result = await profilingRunner.profileKernelWithProgress(filePath, gpuType);
+
+    profilingPanel.updateResults(result, path.basename(filePath));
+
+    // Apply inline editor decorations
+    decorationProvider.updateDecorations(filePath, result);
+
+    if (result.successful) {
+      const nKernels = result.kernelMetrics?.length ?? 0;
+      vscode.window.showInformationMessage(
+        `Profiling complete: ${nKernels} kernel(s) profiled on ${result.gpuName || gpuType}`
+      );
+    } else {
+      vscode.window.showErrorMessage(
+        `Profiling failed: ${(result.errorMessage || '').substring(0, 100)}...`
+      );
+    }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    profilingPanel.showError(errorMessage);
+    vscode.window.showErrorMessage(`Failed to profile kernel: ${errorMessage.substring(0, 100)}...`);
+  }
+}
+
+async function showProfilingCommand(context: vscode.ExtensionContext) {
+  ProfilingPanel.createOrShow(context.extensionUri);
 }
 
 async function exportResultsCommand() {
