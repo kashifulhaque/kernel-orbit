@@ -2,7 +2,7 @@
   "name": "kernel-orbit",
   "displayName": "Kernel Orbit",
   "description": "Kernel Orbit lets you run CUDA/Triton kernels and Jupyter notebooks on modal.com GPUs with benchmarking and profiling",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "publisher": "ifkash",
   "repository": {
     "type": "git",
@@ -106,9 +106,20 @@
         "title": "Kill Session",
         "category": "Kernel Orbit",
         "icon": "$(close)"
+      },
+      {
+        "command": "modalKernel.selectGpuFromTree",
+        "title": "Select GPU",
+        "category": "Kernel Orbit"
       }
     ],
     "menus": {
+      "commandPalette": [
+        {
+          "command": "modalKernel.selectGpuFromTree",
+          "when": "false"
+        }
+      ],
       "editor/title": [
         {
           "command": "modalKernel.runKernel",
@@ -214,6 +225,10 @@
     },
     "views": {
       "modalKernelExplorer": [
+        {
+          "id": "modalKernel.gpuPicker",
+          "name": "GPU Selection"
+        },
         {
           "id": "modalKernel.sessions",
           "name": "Active Sessions"

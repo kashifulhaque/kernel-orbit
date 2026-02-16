@@ -3,18 +3,22 @@ export interface GpuConfig {
   name: string;
   memoryGb: number;
   architecture: string;
+  computeCapability: string;
+  smCount: number;
+  cudaCores: number;
+  memoryBandwidthGBs: number;
 }
 
 export const AVAILABLE_GPUS: GpuConfig[] = [
-  { id: "T4", name: "NVIDIA T4", memoryGb: 16, architecture: "Turing" },
-  { id: "L4", name: "NVIDIA L4", memoryGb: 24, architecture: "Ada Lovelace" },
-  { id: "A10G", name: "NVIDIA A10G", memoryGb: 24, architecture: "Ampere" },
-  { id: "A100-40GB", name: "NVIDIA A100 (40GB)", memoryGb: 40, architecture: "Ampere" },
-  { id: "A100-80GB", name: "NVIDIA A100 (80GB)", memoryGb: 80, architecture: "Ampere" },
-  { id: "L40S", name: "NVIDIA L40S", memoryGb: 48, architecture: "Ada Lovelace" },
-  { id: "H100", name: "NVIDIA H100", memoryGb: 80, architecture: "Hopper" },
-  { id: "H200", name: "NVIDIA H200", memoryGb: 141, architecture: "Hopper" },
-  { id: "B200", name: "NVIDIA B200", memoryGb: 192, architecture: "Blackwell" },
+  { id: "T4", name: "NVIDIA T4", memoryGb: 16, architecture: "Turing", computeCapability: "7.5", smCount: 40, cudaCores: 2560, memoryBandwidthGBs: 320 },
+  { id: "L4", name: "NVIDIA L4", memoryGb: 24, architecture: "Ada Lovelace", computeCapability: "8.9", smCount: 60, cudaCores: 7680, memoryBandwidthGBs: 300 },
+  { id: "A10G", name: "NVIDIA A10G", memoryGb: 24, architecture: "Ampere", computeCapability: "8.6", smCount: 80, cudaCores: 10240, memoryBandwidthGBs: 600 },
+  { id: "A100-40GB", name: "NVIDIA A100 (40GB)", memoryGb: 40, architecture: "Ampere", computeCapability: "8.0", smCount: 108, cudaCores: 6912, memoryBandwidthGBs: 1555 },
+  { id: "A100-80GB", name: "NVIDIA A100 (80GB)", memoryGb: 80, architecture: "Ampere", computeCapability: "8.0", smCount: 108, cudaCores: 6912, memoryBandwidthGBs: 2039 },
+  { id: "L40S", name: "NVIDIA L40S", memoryGb: 48, architecture: "Ada Lovelace", computeCapability: "8.9", smCount: 142, cudaCores: 18176, memoryBandwidthGBs: 864 },
+  { id: "H100", name: "NVIDIA H100", memoryGb: 80, architecture: "Hopper", computeCapability: "9.0", smCount: 132, cudaCores: 16896, memoryBandwidthGBs: 3350 },
+  { id: "H200", name: "NVIDIA H200", memoryGb: 141, architecture: "Hopper", computeCapability: "9.0", smCount: 132, cudaCores: 16896, memoryBandwidthGBs: 4800 },
+  { id: "B200", name: "NVIDIA B200", memoryGb: 192, architecture: "Blackwell", computeCapability: "10.0", smCount: 160, cudaCores: 20480, memoryBandwidthGBs: 8000 },
 ];
 
 export type KernelSessionState = 'starting' | 'idle' | 'busy' | 'disconnected';

@@ -4,11 +4,13 @@ import { ModalRunner } from './modalRunner';
 import { ResultsPanel } from './resultsPanel';
 import { ModalNotebookController } from './notebookController';
 import { SessionTreeProvider } from './sessionTreeProvider';
+import { GpuPickerProvider } from './gpuPickerProvider';
 import { ModalKernelState, AVAILABLE_GPUS, GpuConfig, KernelSessionState } from './types';
 
 let modalRunner: ModalRunner;
 let notebookController: ModalNotebookController;
 let statusBarItem: vscode.StatusBarItem;
+let gpuPicker: GpuPickerProvider;
 
 export function activate(context: vscode.ExtensionContext) {
   console.log('Kernel Orbit is now active!');
@@ -17,6 +19,11 @@ export function activate(context: vscode.ExtensionContext) {
 
   notebookController = new ModalNotebookController(modalRunner);
   context.subscriptions.push({ dispose: () => notebookController.dispose() });
+
+  gpuPicker = new GpuPickerProvider();
+  context.subscriptions.push(
+    vscode.window.registerTreeDataProvider('modalKernel.gpuPicker', gpuPicker)
+  );
 
   const sessionTree = new SessionTreeProvider(notebookController);
   context.subscriptions.push(
@@ -44,6 +51,13 @@ export function activate(context: vscode.ExtensionContext) {
       if (item?.notebookUri) {
         notebookController.terminateSession(item.notebookUri);
       }
+    }),
+    vscode.commands.registerCommand('modalKernel.selectGpuFromTree', (gpuId: string) => {
+      const state = ModalKernelState.getInstance();
+      state.selectedGpu = gpuId;
+      gpuPicker.refresh();
+      updateStatusBar();
+      notebookController.onGpuChanged(gpuId);
     })
   );
   context.subscriptions.push(
@@ -53,16 +67,30 @@ export function activate(context: vscode.ExtensionContext) {
   );
 }
 
+function gpuSpecsTooltip(gpu: GpuConfig): string {
+  return [
+    `${gpu.name}`,
+    `Architecture: ${gpu.architecture}`,
+    `Compute Capability: ${gpu.computeCapability}`,
+    `Memory: ${gpu.memoryGb} GB`,
+    `SMs: ${gpu.smCount}`,
+    `CUDA Cores: ${gpu.cudaCores.toLocaleString()}`,
+    `Memory Bandwidth: ${gpu.memoryBandwidthGBs.toLocaleString()} GB/s`,
+  ].join('\n');
+}
+
 function updateStatusBar() {
   const state = ModalKernelState.getInstance();
   const gpu = AVAILABLE_GPUS.find(g => g.id === state.selectedGpu);
+  const shortLabel = gpu ? `${gpu.id} ${gpu.name.replace('NVIDIA ', '')} · ${gpu.memoryGb}GB` : state.selectedGpu;
+  const fullTooltip = gpu ? gpuSpecsTooltip(gpu) : state.selectedGpu;
 
   const editor = vscode.window.activeTextEditor;
   if (editor) {
     const ext = path.extname(editor.document.fileName).toLowerCase();
     if (ext === '.cu' || ext === '.cuh' || ext === '.py') {
-      statusBarItem.text = `$(server) ${gpu?.name || state.selectedGpu}`;
-      statusBarItem.tooltip = `Click to change GPU. Current: ${state.selectedGpu}`;
+      statusBarItem.text = `$(server) ${shortLabel}`;
+      statusBarItem.tooltip = `Click to change GPU\n\n${fullTooltip}`;
       statusBarItem.show();
       return;
     }
@@ -72,30 +100,29 @@ function updateStatusBar() {
   if (notebookEditor) {
     const uri = notebookEditor.notebook.uri.toString();
     const sessionState = notebookController.getSessionState(uri);
-    const gpuLabel = gpu?.name || state.selectedGpu;
 
     if (sessionState) {
       switch (sessionState) {
         case 'starting':
-          statusBarItem.text = `$(sync~spin) Starting ${gpuLabel}…`;
-          statusBarItem.tooltip = `Provisioning GPU container…\nGPU: ${state.selectedGpu}`;
+          statusBarItem.text = `$(sync~spin) Starting ${shortLabel}…`;
+          statusBarItem.tooltip = `Provisioning GPU container…\n\n${fullTooltip}`;
           break;
         case 'busy':
-          statusBarItem.text = `$(loading~spin) Running on ${gpuLabel}`;
-          statusBarItem.tooltip = `Executing cell on remote GPU\nGPU: ${state.selectedGpu}`;
+          statusBarItem.text = `$(loading~spin) Running on ${shortLabel}`;
+          statusBarItem.tooltip = `Executing cell on remote GPU\n\n${fullTooltip}`;
           break;
         case 'idle':
-          statusBarItem.text = `$(check) ${gpuLabel}`;
-          statusBarItem.tooltip = `GPU session ready\nClick to change GPU. Current: ${state.selectedGpu}`;
+          statusBarItem.text = `$(check) ${shortLabel}`;
+          statusBarItem.tooltip = `GPU session ready\nClick to change GPU\n\n${fullTooltip}`;
           break;
         case 'disconnected':
-          statusBarItem.text = `$(error) ${gpuLabel} (disconnected)`;
-          statusBarItem.tooltip = `Session disconnected. Run a cell to reconnect.\nGPU: ${state.selectedGpu}`;
+          statusBarItem.text = `$(error) ${shortLabel} (disconnected)`;
+          statusBarItem.tooltip = `Session disconnected. Run a cell to reconnect.\n\n${fullTooltip}`;
           break;
       }
     } else {
-      statusBarItem.text = `$(server) ${gpuLabel}`;
-      statusBarItem.tooltip = `Click to change GPU. Current: ${state.selectedGpu}`;
+      statusBarItem.text = `$(server) ${shortLabel}`;
+      statusBarItem.tooltip = `Click to change GPU\n\n${fullTooltip}`;
     }
     statusBarItem.show();
     return;
@@ -197,25 +224,7 @@ async function runKernelCommand(context: vscode.ExtensionContext) {
 }
 
 async function selectGpuCommand() {
-  const state = ModalKernelState.getInstance();
-
-  const items: vscode.QuickPickItem[] = AVAILABLE_GPUS.map(gpu => ({
-    label: gpu.id === state.selectedGpu ? `$(check) ${gpu.name}` : gpu.name,
-    description: `${gpu.memoryGb} GB • ${gpu.architecture}`,
-    detail: gpu.id
-  }));
-
-  const selected = await vscode.window.showQuickPick(items, {
-    placeHolder: 'Select GPU type for kernel execution',
-    title: 'GPU Selection'
-  });
-
-  if (selected && selected.detail) {
-    state.selectedGpu = selected.detail;
-    updateStatusBar();
-    vscode.window.showInformationMessage(`GPU changed to ${selected.detail}`);
-    notebookController.onGpuChanged(selected.detail);
-  }
+  await vscode.commands.executeCommand('modalKernel.gpuPicker.focus');
 }
 
 async function showResultsCommand(context: vscode.ExtensionContext) {
