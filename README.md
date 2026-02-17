@@ -49,7 +49,37 @@ Open VS Code Settings and search for "Modal Kernel" to customize:
 - **Default GPU** (default: T4): GPU type to use by default
 - **GPU Count** (default: 1): Number of GPUs to attach (1-8)
 - **Warmup/Benchmark Runs**: Configure profiling behavior for kernel files
+- **Sync Files** (default: true): Sync local workspace files to the remote GPU container
+- **Max Sync File Size MB** (default: 100): Files larger than this are skipped with a warning
+- **Sync Exclude Patterns**: Additional glob patterns to exclude from sync
 
+## Notebook Features
+
+### File sync
+
+Local workspace files are synced to the remote container before each cell execution. Files ≤ 100 MB are synced automatically; larger files trigger a warning with alternatives (`!wget` on GPU or Modal Volume).
+
+### Package installation
+
+`!pip install`, `%pip install`, and `!pip3 install` are automatically proxied through `uv pip install --system` for faster installs. You can also use `%uv pip install` directly.
+
+### Supported magics
+
+`%time`, `%timeit`, `%%time`, `%%timeit`, `%matplotlib`, `%pip`, `%uv`, `!` shell commands.
+
+## Roadmap
+
+- [ ] Tab completion / intellisense for remote objects
+- [ ] Variable inspector (browse remote namespace)
+- [ ] `?` / `??` introspection (docstrings)
+- [ ] `input()` support (`input_request` / `input_reply`)
+- [ ] Top-level `await` (async cell execution)
+- [ ] More IPython magics (`%cd`, `%pwd`, `%env`, `%who`)
+- [ ] `tqdm` progress bar support
+- [ ] `ipywidgets` support
+- [ ] `IPython.display.clear_output()`
+- [ ] `%%bash`, `%%html`, `%%javascript` cell magics
+- [ ] Kernel info request (language, version metadata)
 
 ## Development
 

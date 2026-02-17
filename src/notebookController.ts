@@ -1,4 +1,6 @@
 import * as path from 'path';
+import * as fs from 'fs';
+import * as crypto from 'crypto';
 import * as vscode from 'vscode';
 import { ModalRunner } from './modalRunner';
 import { ChildProcess, spawn } from 'child_process';
@@ -27,6 +29,10 @@ class ModalNotebookSession {
 
   private _activeExecution: vscode.NotebookCellExecution | null = null;
   private _streamedOutputCount = 0;
+
+  private _syncResolve: ((msg: any) => void) | null = null;
+  private _syncReject: ((err: Error) => void) | null = null;
+  private _syncedFileHashes: Map<string, string> = new Map();
 
   private readonly _modalRunner: ModalRunner;
   private readonly _outputChannel: vscode.OutputChannel;
@@ -167,6 +173,105 @@ class ModalNotebookSession {
     });
   }
 
+  async syncFiles(): Promise<void> {
+    if (!this._process || !this._ready) { return; }
+
+    const config = vscode.workspace.getConfiguration('modalKernel');
+    const syncEnabled = config.get<boolean>('syncFiles', true);
+    if (!syncEnabled) { return; }
+
+    const maxSizeMB = config.get<number>('maxSyncFileSizeMB', 100);
+    const maxSizeBytes = maxSizeMB * 1024 * 1024;
+    const excludePatterns = config.get<string[]>('syncExcludePatterns', []);
+
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    if (!workspaceFolders || workspaceFolders.length === 0) { return; }
+
+    const workspaceRoot = workspaceFolders[0].uri;
+
+    // Build exclude pattern: combines user excludes + common large/binary dirs
+    const defaultExcludes = [
+      '**/node_modules/**', '**/.git/**', '**/dist/**', '**/build/**',
+      '**/__pycache__/**', '**/.venv/**', '**/venv/**', '**/*.pyc',
+      '**/.vscode/**', '**/.idea/**',
+    ];
+    const allExcludes = [...defaultExcludes, ...excludePatterns].join(',');
+    const excludeGlob = `{${allExcludes}}`;
+
+    // Find all files in the workspace (respects .gitignore by default)
+    const files = await vscode.workspace.findFiles(
+      new vscode.RelativePattern(workspaceRoot, '**/*'),
+      excludeGlob,
+      5000 // Cap at 5000 files to avoid overwhelming the sync
+    );
+
+    const filesToSync: Array<{ path: string; content: string }> = [];
+    const skippedLargeFiles: string[] = [];
+
+    for (const fileUri of files) {
+      try {
+        const stat = await vscode.workspace.fs.stat(fileUri);
+        if (stat.type !== vscode.FileType.File) { continue; }
+
+        const relativePath = path.relative(workspaceRoot.fsPath, fileUri.fsPath);
+
+        if (stat.size > maxSizeBytes) {
+          skippedLargeFiles.push(`${relativePath} (${(stat.size / (1024 * 1024)).toFixed(1)} MB)`);
+          continue;
+        }
+
+        // Read file and compute hash for incremental sync
+        const contentBytes = await vscode.workspace.fs.readFile(fileUri);
+        const hash = crypto.createHash('md5').update(contentBytes).digest('hex');
+
+        // Skip if the file hasn't changed since last sync
+        if (this._syncedFileHashes.get(relativePath) === hash) { continue; }
+
+        const contentBase64 = Buffer.from(contentBytes).toString('base64');
+        filesToSync.push({ path: relativePath, content: contentBase64 });
+        this._syncedFileHashes.set(relativePath, hash);
+      } catch {
+        // Skip files we can't read (permissions, etc.)
+      }
+    }
+
+    // Show warning for large files
+    if (skippedLargeFiles.length > 0) {
+      const fileList = skippedLargeFiles.slice(0, 5).join(', ');
+      const extra = skippedLargeFiles.length > 5 ? ` and ${skippedLargeFiles.length - 5} more` : '';
+      vscode.window.showWarningMessage(
+        `Skipped ${skippedLargeFiles.length} large file(s): ${fileList}${extra}. ` +
+        `To use large files on the GPU, either download them directly (e.g. !wget <url> or !curl -O <url>) ` +
+        `or use a Modal Volume.`,
+        'OK'
+      );
+    }
+
+    if (filesToSync.length === 0) {
+      this._outputChannel.appendLine('[Sync] All files up to date, nothing to sync');
+      return;
+    }
+
+    this._outputChannel.appendLine(`[Sync] Sending ${filesToSync.length} file(s) to remote container…`);
+
+    // Send the sync_files action and wait for sync_complete response
+    return new Promise<void>((resolve, reject) => {
+      this._syncResolve = (msg: any) => {
+        this._outputChannel.appendLine(`[Sync] Complete — ${msg.files_written ?? 0} file(s) written`);
+        if (msg.errors && msg.errors.length > 0) {
+          this._outputChannel.appendLine(`[Sync] Errors: ${JSON.stringify(msg.errors)}`);
+        }
+        resolve();
+      };
+      this._syncReject = reject;
+      this._process!.stdin!.write(JSON.stringify({
+        action: 'sync_files',
+        files: filesToSync,
+        workspace_root: '/workspace',
+      }) + '\n');
+    });
+  }
+
   terminate(): void {
     if (!this._process) { return; }
     this._ready = false;
@@ -240,9 +345,14 @@ class ModalNotebookSession {
       if (this._pendingResolve) { this._pendingResolve(msg); this._pendingResolve = null; this._pendingReject = null; }
       return;
     }
+    if (type === 'sync_complete') {
+      if (this._syncResolve) { this._syncResolve(msg); this._syncResolve = null; this._syncReject = null; }
+      return;
+    }
     if (type === 'error') {
       const error = new Error(msg.message ?? 'Unknown session error');
       if (this._pendingReject) { this._pendingReject(error); this._pendingResolve = null; this._pendingReject = null; }
+      else if (this._syncReject) { this._syncReject(error); this._syncResolve = null; this._syncReject = null; }
       else if (this._readyReject) { this._readyReject(error); this._readyResolve = null; this._readyReject = null; }
       return;
     }
@@ -414,6 +524,14 @@ export class ModalNotebookController {
       }
 
       const session = await this._ensureSession(notebookUri, gpuType);
+
+      // Sync workspace files to the remote container before execution
+      try {
+        await session.syncFiles();
+      } catch (syncError) {
+        this._outputChannel.appendLine(`[Sync] Warning: file sync failed — ${syncError}`);
+        // Non-fatal: continue with execution even if sync fails
+      }
 
       // Enable progressive output streaming
       session.setActiveExecution(execution);

@@ -2,7 +2,7 @@
   "name": "kernel-orbit",
   "displayName": "Kernel Orbit",
   "description": "Kernel Orbit lets you run CUDA/Triton kernels and Jupyter notebooks on modal.com GPUs with benchmarking and profiling",
-  "version": "0.2.6",
+  "version": "0.3.1",
   "publisher": "ifkash",
   "repository": {
     "type": "git",
@@ -243,12 +243,35 @@
         "modalKernel.profilingMode": {
           "type": "string",
           "default": "summary",
-          "enum": ["summary", "full"],
+          "enum": [
+            "summary",
+            "full"
+          ],
           "enumDescriptions": [
             "Collect basic profiling metrics (SM efficiency, memory throughput, occupancy, execution time)",
             "Collect full profiling metrics including roofline and cache data (slower)"
           ],
           "description": "Nsight Compute profiling data collection level"
+        },
+        "modalKernel.syncFiles": {
+          "type": "boolean",
+          "default": true,
+          "description": "Sync local workspace files to the remote Modal GPU container before each cell execution"
+        },
+        "modalKernel.syncExcludePatterns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Additional glob patterns to exclude from file sync (e.g. '**/*.parquet', '**/data/**'). .gitignore and common dirs like node_modules are excluded by default."
+        },
+        "modalKernel.maxSyncFileSizeMB": {
+          "type": "number",
+          "default": 100,
+          "minimum": 1,
+          "maximum": 500,
+          "description": "Maximum file size in MB to sync. Files larger than this are skipped with a warning suggesting alternatives."
         }
       }
     },

@@ -189,7 +189,7 @@ def _process_magics(code: str) -> str:
 
     if stripped.startswith("!"):
       cmd = stripped[1:]
-      transformed.append(f"{indent}__shell_exec__({repr(cmd)})")
+      transformed.append(f"{indent}__shell_exec__(__pip_to_uv__({repr(cmd)}))")
     elif stripped.startswith("%matplotlib"):
       transformed.append(f"{indent}pass  # matplotlib backend configured (Agg)")
     elif stripped.startswith("%uv "):
@@ -201,6 +201,9 @@ def _process_magics(code: str) -> str:
     elif stripped.startswith("%time "):
       stmt = stripped[6:].strip()
       transformed.append(f"{indent}__magic_time__({repr(stmt)}, globals())")
+    elif stripped.startswith("%pip "):
+      args = stripped[5:].strip()
+      transformed.append(f"{indent}__shell_exec__(__pip_to_uv__({repr('pip ' + args)}))")
     elif stripped.startswith("%"):
       transformed.append(f"{indent}# [unsupported magic] {stripped}")
     else:
@@ -259,6 +262,15 @@ def _create_namespace() -> Dict[str, Any]:
       pass
     # Fallback to text/plain
     outputs.append({"mime": "text/plain", "data": repr(obj)})
+
+  # Proxy pip → uv pip --system
+  def _pip_to_uv(cmd):
+    import re
+    # Match: pip install ..., pip3 install ..., python -m pip install ...
+    m = re.match(r'^(?:python3?\s+-m\s+)?pip3?\s+install\s+(.+)$', cmd)
+    if m:
+      return f"uv pip install --system {m.group(1)}"
+    return cmd
 
   # Shell execution helper
   def _shell_exec(cmd):
@@ -338,6 +350,7 @@ def _create_namespace() -> Dict[str, Any]:
     "_display_outputs": display_outputs,
     "display": _display_func,
     "__shell_exec__": _shell_exec,
+    "__pip_to_uv__": _pip_to_uv,
     "__uv_run__": _uv_run,
     "__magic_time__": _magic_time,
     "__magic_timeit__": _magic_timeit,
@@ -413,6 +426,8 @@ def _install_ipython_display_mock(namespace: Dict[str, Any]) -> None:
   display_mod.Image = _Image
 
   ipython_mod.display = display_mod
+  ipython_mod.get_ipython = lambda: None  # matplotlib checks this for REPL hooks
+  ipython_mod.version_info = (8, 24, 0)   # matplotlib checks version to decide backend
 
   sys.modules.setdefault("IPython", ipython_mod)
   sys.modules.setdefault("IPython.display", display_mod)
@@ -579,6 +594,28 @@ class Session:
     return {"successful": True}
 
   @modal.method()
+  def sync_files(self, session_id: str, files: list, workspace_root: str = "/workspace") -> Dict:
+    """Receive files from the local machine and write them to the container filesystem."""
+    import base64 as b64
+    written = 0
+    errors = []
+    root = Path(workspace_root)
+    root.mkdir(parents=True, exist_ok=True)
+    for entry in files:
+      try:
+        rel_path = entry["path"]
+        content_b64 = entry["content"]
+        dest = root / rel_path
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(b64.b64decode(content_b64))
+        written += 1
+      except Exception as e:
+        errors.append({"path": entry.get("path", "?"), "error": str(e)})
+    # Set cwd so relative paths resolve correctly during cell execution
+    os.chdir(root)
+    return {"successful": True, "files_written": written, "errors": errors}
+
+  @modal.method()
   def get_info(self) -> Dict:
     return get_gpu_info()
 
@@ -687,6 +724,19 @@ def _worker(session, session_id: str) -> None:
         continue
 
       _send_progressive_outputs(result)
+
+    elif action == "sync_files":
+      try:
+        files = cmd.get("files", [])
+        workspace_root = cmd.get("workspace_root", "/workspace")
+        result = session.sync_files.remote(session_id, files, workspace_root)
+        _send({
+          "type": "sync_complete",
+          "files_written": result.get("files_written", 0),
+          "errors": result.get("errors", []),
+        })
+      except Exception as e:
+        _send({"type": "error", "message": f"File sync failed: {e}"})
 
     elif action == "reset":
       try:
