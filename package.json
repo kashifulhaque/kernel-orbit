@@ -2,7 +2,7 @@
   "name": "kernel-orbit",
   "displayName": "Kernel Orbit",
   "description": "Kernel Orbit lets you run CUDA/Triton kernels and Jupyter notebooks on modal.com GPUs with benchmarking and profiling",
-  "version": "0.3.1",
+  "version": "0.3.3",
   "publisher": "ifkash",
   "repository": {
     "type": "git",

@@ -72,7 +72,7 @@ export interface RunHistoryItem {
   gpuType: string;
   timestamp: Date;
   result: KernelResult | null;
-  status: 'running' | 'completed' | 'failed';
+  status: 'running' | 'completed' | 'failed' | 'cancelled';
 }
 
 export type ProfilingLimitingFactor = 'warps' | 'registers' | 'shared_memory' | 'blocks' | 'unknown';

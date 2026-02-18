@@ -6,6 +6,7 @@ import os
 import sys
 import json
 import time
+import re
 import modal
 import tempfile
 import subprocess
@@ -79,6 +80,65 @@ def get_triton_image():
 
 
 app = modal.App("kernel-orbit")
+
+_TIMING_LIST_PATTERN = re.compile(
+  r"(?i)(?:timings?_ms|timing_samples_ms|samples_ms)\s*[:=]\s*\[([^\]]+)\]"
+)
+_TIMING_VALUE_PATTERN = re.compile(
+  r"(?i)([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)\s*(ns|us|µs|μs|ms|s)\b"
+)
+
+
+def _convert_time_to_ms(value: float, unit: str) -> float:
+  normalized_unit = unit.lower()
+  if normalized_unit == "s":
+    return value * 1000.0
+  if normalized_unit == "ms":
+    return value
+  if normalized_unit in ("us", "µs", "μs"):
+    return value / 1000.0
+  if normalized_unit == "ns":
+    return value / 1_000_000.0
+  return value
+
+
+def extract_timing_samples_ms(output: str) -> List[float]:
+  """Extract timing samples from kernel stdout/stderr in milliseconds."""
+  if not output:
+    return []
+
+  samples: List[float] = []
+
+  # Example: timing_samples_ms=[0.11, 0.12, 0.10]
+  for list_match in _TIMING_LIST_PATTERN.finditer(output):
+    values = re.findall(r"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?", list_match.group(1))
+    for raw_value in values:
+      try:
+        value = float(raw_value)
+      except ValueError:
+        continue
+      if value >= 0:
+        samples.append(value)
+
+  # Example: "Execution time: 123.4 us", "kernel elapsed 0.26 ms"
+  timing_keywords = ("time", "timing", "elapsed", "latency", "kernel")
+  for raw_line in output.splitlines():
+    line = raw_line.strip()
+    if not line:
+      continue
+    lowered = line.lower()
+    if not any(keyword in lowered for keyword in timing_keywords):
+      continue
+    for value_match in _TIMING_VALUE_PATTERN.finditer(line):
+      try:
+        value = float(value_match.group(1))
+      except ValueError:
+        continue
+      converted = _convert_time_to_ms(value, value_match.group(2))
+      if converted >= 0:
+        samples.append(converted)
+
+  return samples
 
 
 @dataclass
@@ -297,18 +357,51 @@ def _run_cuda_kernel_impl(
         return asdict(result)
 
       warmup_start = time.perf_counter()
-      for _ in range(warmup_runs):
-        subprocess.run([str(exe_file)], capture_output=True)
+      for warmup_idx in range(warmup_runs):
+        warmup_result = subprocess.run([str(exe_file)], capture_output=True, text=True)
+        if warmup_result.returncode != 0:
+          result.successful = False
+          result.kernel_output = warmup_result.stdout + warmup_result.stderr
+          result.error_message = (
+            f"Warmup run {warmup_idx + 1} failed with exit code {warmup_result.returncode}:\n"
+            f"{result.kernel_output}"
+          )
+          result.total_time_ms = (time.perf_counter() - total_start) * 1000
+          return asdict(result)
       result.warmup_time_ms = (time.perf_counter() - warmup_start) * 1000
 
-      times = []
+      host_times_ms = []
+      kernel_reported_times_ms = []
       kernel_output = ""
-      for _ in range(benchmark_runs):
+      for run_idx in range(benchmark_runs):
         start = time.perf_counter()
         run_result = subprocess.run([str(exe_file)], capture_output=True, text=True)
         elapsed = (time.perf_counter() - start) * 1000
-        times.append(elapsed)
-        kernel_output = run_result.stdout + run_result.stderr
+        if run_result.returncode != 0:
+          result.successful = False
+          result.kernel_output = run_result.stdout + run_result.stderr
+          result.error_message = (
+            f"Benchmark run {run_idx + 1} failed with exit code {run_result.returncode}:\n"
+            f"{result.kernel_output}"
+          )
+          result.total_time_ms = (time.perf_counter() - total_start) * 1000
+          return asdict(result)
+        run_output = run_result.stdout + run_result.stderr
+        kernel_output = run_output
+        host_times_ms.append(elapsed)
+        parsed_samples = extract_timing_samples_ms(run_output)
+        if parsed_samples:
+          kernel_reported_times_ms.append(statistics.mean(parsed_samples))
+
+      use_kernel_reported_times = (
+        benchmark_runs > 0 and len(kernel_reported_times_ms) == benchmark_runs
+      )
+      times = kernel_reported_times_ms if use_kernel_reported_times else host_times_ms
+      timing_source_note = (
+        "Timing source: kernel-reported values parsed from program output."
+        if use_kernel_reported_times
+        else "Timing source: host wall-clock around executable invocation."
+      )
 
       result.timing_samples_ms = times
       result.kernel_output = kernel_output
@@ -338,6 +431,11 @@ def _run_cuda_kernel_impl(
           result.profiler_output = prof_result.stdout
         except:
           pass
+
+      if result.profiler_output:
+        result.profiler_output = f"{timing_source_note}\n{result.profiler_output}"
+      else:
+        result.profiler_output = timing_source_note
 
       result.successful = True
 
@@ -383,7 +481,7 @@ def run_triton_on_a100_40gb(
   kernel_source: str, warmup_runs: int, benchmark_runs: int, enable_profiling: bool
 ) -> Dict:
   return _run_triton_kernel_impl(
-    kernel_source, "A100", warmup_runs, benchmark_runs, enable_profiling
+    kernel_source, "A100-40GB", warmup_runs, benchmark_runs, enable_profiling
   )
 
 
@@ -466,69 +564,90 @@ def _run_triton_kernel_impl(
 
     torch.cuda.reset_peak_memory_stats()
 
-    kernel_globals = {
-      "torch": torch,
-      "triton": triton,
-      "tl": tl,
-      "np": __import__("numpy"),
-      "numpy": __import__("numpy"),
-    }
-
     stdout_capture = io.StringIO()
+    import importlib.util
+    import uuid
 
-    with contextlib.redirect_stdout(stdout_capture):
-      exec(kernel_source, kernel_globals)
+    with tempfile.TemporaryDirectory() as module_tmpdir:
+      module_path = Path(module_tmpdir) / "user_kernel.py"
+      module_path.write_text(kernel_source, encoding="utf-8")
 
-    run_fn = None
-    for name in ["benchmark", "benchmark_kernel", "main", "run", "test"]:
-      if name in kernel_globals and callable(kernel_globals[name]):
-        run_fn = kernel_globals[name]
-        break
+      module_name = f"kernel_orbit_user_{uuid.uuid4().hex}"
+      module_spec = importlib.util.spec_from_file_location(module_name, module_path)
+      if module_spec is None or module_spec.loader is None:
+        raise RuntimeError("Failed to create module spec for Triton kernel source.")
 
-    if run_fn is None:
-      result.kernel_output = stdout_capture.getvalue()
-      result.successful = True
-      result.total_time_ms = (time.perf_counter() - total_start) * 1000
+      user_module = importlib.util.module_from_spec(module_spec)
+      user_module.__dict__.update(
+        {
+          "torch": torch,
+          "triton": triton,
+          "tl": tl,
+          "np": __import__("numpy"),
+          "numpy": __import__("numpy"),
+        }
+      )
 
-      result.gpu_memory_used_mb = torch.cuda.memory_allocated() / (1024**2)
-      result.peak_memory_mb = torch.cuda.max_memory_allocated() / (1024**2)
+      sys.modules[module_name] = user_module
+      try:
+        with contextlib.redirect_stdout(stdout_capture):
+          module_spec.loader.exec_module(user_module)
 
-      return asdict(result)
+        run_fn = None
+        for name in ["benchmark", "benchmark_kernel", "main", "run", "test"]:
+          candidate = getattr(user_module, name, None)
+          if callable(candidate):
+            run_fn = candidate
+            break
 
-    warmup_start = time.perf_counter()
-    for _ in range(warmup_runs):
-      with contextlib.redirect_stdout(stdout_capture):
-        run_fn()
-      torch.cuda.synchronize()
-    result.warmup_time_ms = (time.perf_counter() - warmup_start) * 1000
+        if run_fn is None:
+          result.kernel_output = stdout_capture.getvalue()
+          result.successful = True
+          result.total_time_ms = (time.perf_counter() - total_start) * 1000
 
-    times = []
-    for _ in range(benchmark_runs):
-      torch.cuda.synchronize()
-      start = time.perf_counter()
-      with contextlib.redirect_stdout(stdout_capture):
-        run_fn()
-      torch.cuda.synchronize()
-      elapsed = (time.perf_counter() - start) * 1000
-      times.append(elapsed)
+          result.gpu_memory_used_mb = torch.cuda.memory_allocated() / (1024**2)
+          result.peak_memory_mb = torch.cuda.max_memory_allocated() / (1024**2)
 
-    result.timing_samples_ms = times
-    result.kernel_output = stdout_capture.getvalue()
+          return asdict(result)
 
-    if times:
-      result.execution_time_ms = statistics.mean(times)
-      result.execution_time_std_ms = statistics.stdev(times) if len(times) > 1 else 0
-      result.min_execution_time_ms = min(times)
-      result.max_execution_time_ms = max(times)
+        warmup_start = time.perf_counter()
+        for _ in range(warmup_runs):
+          with contextlib.redirect_stdout(stdout_capture):
+            run_fn()
+          torch.cuda.synchronize()
+        result.warmup_time_ms = (time.perf_counter() - warmup_start) * 1000
 
-    result.gpu_memory_used_mb = torch.cuda.memory_allocated() / (1024**2)
-    result.gpu_memory_reserved_mb = torch.cuda.memory_reserved() / (1024**2)
-    result.peak_memory_mb = torch.cuda.max_memory_allocated() / (1024**2)
+        times = []
+        for _ in range(benchmark_runs):
+          torch.cuda.synchronize()
+          start = time.perf_counter()
+          with contextlib.redirect_stdout(stdout_capture):
+            run_fn()
+          torch.cuda.synchronize()
+          elapsed = (time.perf_counter() - start) * 1000
+          times.append(elapsed)
 
-    gpu_info_after = get_gpu_info()
-    result.gpu_utilization_percent = gpu_info_after.get("utilization_percent", 0)
+        result.timing_samples_ms = times
+        result.kernel_output = stdout_capture.getvalue()
 
-    result.successful = True
+        if times:
+          result.execution_time_ms = statistics.mean(times)
+          result.execution_time_std_ms = (
+            statistics.stdev(times) if len(times) > 1 else 0
+          )
+          result.min_execution_time_ms = min(times)
+          result.max_execution_time_ms = max(times)
+
+        result.gpu_memory_used_mb = torch.cuda.memory_allocated() / (1024**2)
+        result.gpu_memory_reserved_mb = torch.cuda.memory_reserved() / (1024**2)
+        result.peak_memory_mb = torch.cuda.max_memory_allocated() / (1024**2)
+
+        gpu_info_after = get_gpu_info()
+        result.gpu_utilization_percent = gpu_info_after.get("utilization_percent", 0)
+
+        result.successful = True
+      finally:
+        sys.modules.pop(module_name, None)
 
   except Exception as e:
     import traceback

@@ -33,12 +33,37 @@ export class ProfilingRunner {
     this.modalRunner = modalRunner;
   }
 
+  private terminateChildProcess(childProcess: ReturnType<typeof spawn>): void {
+    if (!childProcess.pid) { return; }
+    try {
+      if (process.platform === 'win32') {
+        spawn('taskkill', ['/pid', String(childProcess.pid), '/T', '/F'], { detached: true, stdio: 'ignore' }).unref();
+        return;
+      }
+      childProcess.kill('SIGTERM');
+      setTimeout(() => {
+        if (!childProcess.killed) {
+          try { childProcess.kill('SIGKILL'); } catch { /* ignore */ }
+        }
+      }, 3000);
+    } catch {
+      // Process may already be gone.
+    }
+  }
+
   /**
    * Run profiling on a kernel file and return the result.
    */
-  async profileKernel(filePath: string, gpuType: string): Promise<ProfilingResult> {
+  async profileKernel(
+    filePath: string,
+    gpuType: string,
+    cancellationToken?: vscode.CancellationToken
+  ): Promise<ProfilingResult> {
     const kernelType = this.modalRunner.detectKernelType(filePath);
     if (!kernelType) {
+      if (path.extname(filePath).toLowerCase() === '.py') {
+        throw new Error('Python file does not look like a Triton kernel. Add Triton markers (e.g. `import triton` or `@triton.jit`) or run a CUDA `.cu` file.');
+      }
       throw new Error(`Unsupported file type: ${path.extname(filePath)}`);
     }
 
@@ -73,10 +98,34 @@ export class ProfilingRunner {
       const childProcess = spawn('uv', args, {
         cwd: root || scriptsPath,
         env: modalEnv,
-        shell: true
       });
 
       let stderr = '';
+      let settled = false;
+
+      const cleanup = () => {
+        cancellationDisposable?.dispose();
+      };
+
+      const rejectOnce = (error: Error) => {
+        if (settled) { return; }
+        settled = true;
+        cleanup();
+        try { fs.unlinkSync(outputFile); } catch { /* ignore */ }
+        reject(error);
+      };
+
+      const cancellationDisposable = cancellationToken?.onCancellationRequested(() => {
+        outputChannel.appendLine('Cancellation requested. Terminating Modal profiler...');
+        this.terminateChildProcess(childProcess);
+        rejectOnce(new vscode.CancellationError());
+      });
+
+      if (cancellationToken?.isCancellationRequested) {
+        this.terminateChildProcess(childProcess);
+        rejectOnce(new vscode.CancellationError());
+        return;
+      }
 
       childProcess.stdout.on('data', (data: Buffer) => {
         outputChannel.append(data.toString());
@@ -89,6 +138,10 @@ export class ProfilingRunner {
       });
 
       childProcess.on('close', (code: number | null) => {
+        if (settled) { return; }
+        settled = true;
+        cleanup();
+
         if (code === 0) {
           try {
             const resultJson = fs.readFileSync(outputFile, 'utf-8');
@@ -105,12 +158,13 @@ export class ProfilingRunner {
             reject(new Error(`Failed to parse profiling results: ${error}`));
           }
         } else {
+          try { fs.unlinkSync(outputFile); } catch { /* ignore */ }
           reject(new Error(`Modal profiling run failed with code ${code}:\n${stderr}`));
         }
       });
 
       childProcess.on('error', (error: Error) => {
-        reject(new Error(`Failed to start Modal profiler: ${error.message}`));
+        rejectOnce(new Error(`Failed to start Modal profiler: ${error.message}`));
       });
     });
   }
@@ -123,14 +177,17 @@ export class ProfilingRunner {
       {
         location: vscode.ProgressLocation.Notification,
         title: `Profiling kernel on ${gpuType}...`,
-        cancellable: false
+        cancellable: true
       },
-      async (progress) => {
+      async (progress, token) => {
         progress.report({ increment: 0, message: 'Starting Modal profiler...' });
 
         try {
+          token.onCancellationRequested(() => {
+            progress.report({ message: 'Cancelling profiler...' });
+          });
           progress.report({ increment: 20, message: 'Uploading to Modal...' });
-          const result = await this.profileKernel(filePath, gpuType);
+          const result = await this.profileKernel(filePath, gpuType, token);
           progress.report({ increment: 80, message: 'Complete!' });
           return result;
         } catch (error) {

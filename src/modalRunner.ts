@@ -63,6 +63,37 @@ export class ModalRunner {
     this.cachedCredentials = null;
   }
 
+  private isLikelyTritonSource(source: string): boolean {
+    const tritonMarkers = [
+      /\bimport\s+triton\b/,
+      /\bfrom\s+triton(?:\.[\w.]+)?\s+import\b/,
+      /@triton\.jit\b/,
+      /\btriton\.jit\b/,
+      /\btriton\.autotune\b/,
+      /\btriton\.heuristics\b/,
+      /\btriton\.language\b/,
+    ];
+    return tritonMarkers.some((marker) => marker.test(source));
+  }
+
+  private terminateChildProcess(childProcess: ReturnType<typeof spawn>): void {
+    if (!childProcess.pid) { return; }
+    try {
+      if (process.platform === 'win32') {
+        spawn('taskkill', ['/pid', String(childProcess.pid), '/T', '/F'], { detached: true, stdio: 'ignore' }).unref();
+        return;
+      }
+      childProcess.kill('SIGTERM');
+      setTimeout(() => {
+        if (!childProcess.killed) {
+          try { childProcess.kill('SIGKILL'); } catch { /* ignore */ }
+        }
+      }, 3000);
+    } catch {
+      // Process may already be gone.
+    }
+  }
+
   getModalEnv(): NodeJS.ProcessEnv {
     const credentials = this.loadModalCredentials();
     const env: NodeJS.ProcessEnv = { ...process.env };
@@ -91,7 +122,9 @@ export class ModalRunner {
         if (match) {
           const key = match[1].trim();
           let value = match[2].trim();
-          if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) value = value.slice(1, -1);
+          if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+            value = value.slice(1, -1);
+          }
           env[key] = value;
         }
       }
@@ -289,7 +322,14 @@ MODAL_TOKEN_SECRET=your-token-secret-here
   detectKernelType(filePath: string): 'cuda' | 'triton' | null {
     const ext = path.extname(filePath).toLowerCase();
     if (ext === '.cu' || ext === '.cuh') { return 'cuda'; }
-    if (ext === '.py') { return 'triton'; }
+    if (ext === '.py') {
+      try {
+        const source = fs.readFileSync(filePath, 'utf-8');
+        return this.isLikelyTritonSource(source) ? 'triton' : null;
+      } catch {
+        return null;
+      }
+    }
     return null;
   }
 
@@ -301,7 +341,8 @@ MODAL_TOKEN_SECRET=your-token-secret-here
       benchmarkRuns?: number;
       enableProfiling?: boolean;
       gpuCount?: number;
-    } = {}
+    } = {},
+    cancellationToken?: vscode.CancellationToken
   ): Promise<KernelResult> {
     const config = vscode.workspace.getConfiguration('modalKernel');
     const warmupRuns = options.warmupRuns ?? config.get<number>('warmupRuns', 3);
@@ -310,6 +351,9 @@ MODAL_TOKEN_SECRET=your-token-secret-here
 
     const kernelType = this.detectKernelType(filePath);
     if (!kernelType) {
+      if (path.extname(filePath).toLowerCase() === '.py') {
+        throw new Error('Python file does not look like a Triton kernel. Add Triton markers (e.g. `import triton` or `@triton.jit`) or run a CUDA `.cu` file.');
+      }
       throw new Error(`Unsupported file type: ${path.extname(filePath)}`);
     }
 
@@ -349,10 +393,34 @@ MODAL_TOKEN_SECRET=your-token-secret-here
       const childProcess = spawn('uv', args, {
         cwd: root || scriptsPath,
         env: modalEnv,
-        shell: true
       });
 
       let stderr = '';
+      let settled = false;
+
+      const cleanup = () => {
+        cancellationDisposable?.dispose();
+      };
+
+      const rejectOnce = (error: Error) => {
+        if (settled) { return; }
+        settled = true;
+        cleanup();
+        try { fs.unlinkSync(outputFile); } catch { /* ignore */ }
+        reject(error);
+      };
+
+      const cancellationDisposable = cancellationToken?.onCancellationRequested(() => {
+        this.outputChannel.appendLine('Cancellation requested. Terminating Modal run...');
+        this.terminateChildProcess(childProcess);
+        rejectOnce(new vscode.CancellationError());
+      });
+
+      if (cancellationToken?.isCancellationRequested) {
+        this.terminateChildProcess(childProcess);
+        rejectOnce(new vscode.CancellationError());
+        return;
+      }
 
       childProcess.stdout.on('data', (data: Buffer) => {
         this.outputChannel.append(data.toString());
@@ -365,6 +433,10 @@ MODAL_TOKEN_SECRET=your-token-secret-here
       });
 
       childProcess.on('close', (code: number | null) => {
+        if (settled) { return; }
+        settled = true;
+        cleanup();
+
         if (code === 0) {
           try {
             const resultJson = fs.readFileSync(outputFile, 'utf-8');
@@ -375,12 +447,13 @@ MODAL_TOKEN_SECRET=your-token-secret-here
             reject(new Error(`Failed to parse results: ${error}`));
           }
         } else {
+          try { fs.unlinkSync(outputFile); } catch { /* ignore */ }
           reject(new Error(`Modal run failed with code ${code}:\n${stderr}`));
         }
       });
 
       childProcess.on('error', (error: Error) => {
-        reject(new Error(`Failed to start Modal: ${error.message}`));
+        rejectOnce(new Error(`Failed to start Modal: ${error.message}`));
       });
     });
   }
@@ -400,7 +473,7 @@ MODAL_TOKEN_SECRET=your-token-secret-here
         title: `Running kernel on ${gpuType}...`,
         cancellable: true
       },
-      async (progress) => {
+      async (progress, token) => {
         progress.report({ increment: 0, message: 'Starting Modal...' });
 
         const state = ModalKernelState.getInstance();
@@ -417,8 +490,11 @@ MODAL_TOKEN_SECRET=your-token-secret-here
         state.addToHistory(historyItem);
 
         try {
+          token.onCancellationRequested(() => {
+            progress.report({ message: 'Cancelling run...' });
+          });
           progress.report({ increment: 20, message: 'Uploading to modal...' });
-          const result = await this.runKernel(filePath, gpuType, options);
+          const result = await this.runKernel(filePath, gpuType, options, token);
           progress.report({ increment: 80, message: 'Complete!' });
 
           historyItem.result = result;
@@ -426,7 +502,7 @@ MODAL_TOKEN_SECRET=your-token-secret-here
           state.currentRun = null;
           return result;
         } catch (error) {
-          historyItem.status = 'failed';
+          historyItem.status = error instanceof vscode.CancellationError ? 'cancelled' : 'failed';
           state.currentRun = null;
           throw error;
         }

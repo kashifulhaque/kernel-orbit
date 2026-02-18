@@ -816,6 +816,8 @@ def _profile_triton_impl(kernel_source: str, gpu_type: str) -> Dict[str, Any]:
     import torch
     import contextlib
     import io as _io
+    import importlib.util
+    import uuid
 
     result = ProfilingResult()
     result.profiling_tool_used = "torch_profiler"
@@ -828,78 +830,93 @@ def _profile_triton_impl(kernel_source: str, gpu_type: str) -> Dict[str, Any]:
         result.gpu_name = gpu_info.get("name", "Unknown")
         result.compute_capability = gpu_info.get("compute_capability", "Unknown")
 
-        kernel_globals = {
-            "torch": torch,
-            "triton": triton,
-            "tl": tl,
-            "np": __import__("numpy"),
-            "numpy": __import__("numpy"),
-        }
-
         stdout_capture = _io.StringIO()
+        with tempfile.TemporaryDirectory() as module_tmpdir:
+            module_path = Path(module_tmpdir) / "user_kernel.py"
+            module_path.write_text(kernel_source, encoding="utf-8")
 
-        # first exec the script to define kernels
-        with contextlib.redirect_stdout(stdout_capture):
-            exec(kernel_source, kernel_globals)
+            module_name = f"kernel_orbit_profiler_user_{uuid.uuid4().hex}"
+            module_spec = importlib.util.spec_from_file_location(module_name, module_path)
+            if module_spec is None or module_spec.loader is None:
+                raise RuntimeError("Failed to create module spec for Triton kernel source.")
 
-        # detect a callable entry point
-        run_fn = None
-        for name in ["benchmark", "benchmark_kernel", "main", "run", "test"]:
-            if name in kernel_globals and callable(kernel_globals[name]):
-                run_fn = kernel_globals[name]
-                break
+            user_module = importlib.util.module_from_spec(module_spec)
+            user_module.__dict__.update(
+                {
+                    "torch": torch,
+                    "triton": triton,
+                    "tl": tl,
+                    "np": __import__("numpy"),
+                    "numpy": __import__("numpy"),
+                }
+            )
 
-        if run_fn is None:
-            # no entry point — report what we captured from exec
-            result.successful = True
-            result.raw_ncu_output = stdout_capture.getvalue()
-            return asdict(result)
+            sys.modules[module_name] = user_module
+            try:
+                # load the script from a real file so @triton.jit can inspect source
+                with contextlib.redirect_stdout(stdout_capture):
+                    module_spec.loader.exec_module(user_module)
 
-        # warmup
-        torch.cuda.synchronize()
-        for _ in range(3):
-            with contextlib.redirect_stdout(stdout_capture):
-                run_fn()
-            torch.cuda.synchronize()
+                # detect a callable entry point
+                run_fn = None
+                for name in ["benchmark", "benchmark_kernel", "main", "run", "test"]:
+                    candidate = getattr(user_module, name, None)
+                    if callable(candidate):
+                        run_fn = candidate
+                        break
 
-        # Profile
-        from torch.profiler import profile, ProfilerActivity
+                if run_fn is None:
+                    # no entry point — report what we captured from import
+                    result.successful = True
+                    result.raw_ncu_output = stdout_capture.getvalue()
+                    return asdict(result)
 
-        with profile(
-            activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
-            record_shapes=True,
-            with_stack=False,
-        ) as prof:
-            with contextlib.redirect_stdout(stdout_capture):
-                run_fn()
-            torch.cuda.synchronize()
+                # warmup
+                torch.cuda.synchronize()
+                for _ in range(3):
+                    with contextlib.redirect_stdout(stdout_capture):
+                        run_fn()
+                    torch.cuda.synchronize()
 
-        result.raw_ncu_output = prof.key_averages().table(
-            sort_by="cuda_time_total", row_limit=50
-        )
+                # Profile
+                from torch.profiler import profile, ProfilerActivity
 
-        # Extract per-kernel metrics
-        device_props = torch.cuda.get_device_properties(0)
-        metrics_list: List[Dict[str, Any]] = []
-        for evt in prof.key_averages():
-            if evt.device_type is not None and evt.self_cuda_time_total > 0:
-                cuda_time_us = evt.self_cuda_time_total  # already in μs
-                m = KernelProfilingMetrics(
-                    kernel_name=evt.key,
-                    execution_time_us=cuda_time_us,
-                    sm_efficiency_percent=0.0,  # not directly available from torch profiler
-                    memory_throughput_gbs=0.0,
-                    achieved_occupancy_percent=0.0,
-                    registers_per_thread=0,
-                    block_size=(0, 0, 0),
-                    grid_size=(0, 0, 0),
-                    shared_memory_bytes=0,
-                    limiting_factor="unknown",
+                with profile(
+                    activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
+                    record_shapes=True,
+                    with_stack=False,
+                ) as prof:
+                    with contextlib.redirect_stdout(stdout_capture):
+                        run_fn()
+                    torch.cuda.synchronize()
+
+                result.raw_ncu_output = prof.key_averages().table(
+                    sort_by="cuda_time_total", row_limit=50
                 )
-                metrics_list.append(asdict(m))
 
-        result.kernel_metrics = metrics_list
-        result.successful = True
+                # Extract per-kernel metrics
+                metrics_list: List[Dict[str, Any]] = []
+                for evt in prof.key_averages():
+                    if evt.device_type is not None and evt.self_cuda_time_total > 0:
+                        cuda_time_us = evt.self_cuda_time_total  # already in μs
+                        m = KernelProfilingMetrics(
+                            kernel_name=evt.key,
+                            execution_time_us=cuda_time_us,
+                            sm_efficiency_percent=0.0,  # not directly available from torch profiler
+                            memory_throughput_gbs=0.0,
+                            achieved_occupancy_percent=0.0,
+                            registers_per_thread=0,
+                            block_size=(0, 0, 0),
+                            grid_size=(0, 0, 0),
+                            shared_memory_bytes=0,
+                            limiting_factor="unknown",
+                        )
+                        metrics_list.append(asdict(m))
+
+                result.kernel_metrics = metrics_list
+                result.successful = True
+            finally:
+                sys.modules.pop(module_name, None)
 
     except Exception as e:
         import traceback

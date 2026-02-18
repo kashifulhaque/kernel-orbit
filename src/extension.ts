@@ -227,6 +227,11 @@ async function runKernelCommand(context: vscode.ExtensionContext) {
       vscode.window.showErrorMessage(`Kernel failed: ${result.errorMessage.substring(0, 100)}...`);
     }
   } catch (error) {
+    if (error instanceof vscode.CancellationError) {
+      resultsPanel.showError('Kernel run cancelled.');
+      vscode.window.showInformationMessage('Kernel run cancelled.');
+      return;
+    }
     const errorMessage = error instanceof Error ? error.message : String(error);
     resultsPanel.showError(errorMessage);
     vscode.window.showErrorMessage(`Failed to run kernel: ${errorMessage.substring(0, 100)}...`);
@@ -294,6 +299,11 @@ async function profileKernelCommand(context: vscode.ExtensionContext) {
       );
     }
   } catch (error) {
+    if (error instanceof vscode.CancellationError) {
+      profilingPanel.showError('Kernel profiling cancelled.');
+      vscode.window.showInformationMessage('Kernel profiling cancelled.');
+      return;
+    }
     const errorMessage = error instanceof Error ? error.message : String(error);
     profilingPanel.showError(errorMessage);
     vscode.window.showErrorMessage(`Failed to profile kernel: ${errorMessage.substring(0, 100)}...`);
