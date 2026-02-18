@@ -1,7 +1,7 @@
 """
 Unit tests for the ncu CSV parsing logic in kernel_profiler.py.
 
-Run with: python -m pytest modal_scripts/test_kernel_profiler.py -v
+Run with: uv run pytest modal_scripts/test_kernel_profiler.py -v
 
 Since kernel_profiler.py imports ``modal`` at the top level (which is only
 available in the Modal cloud environment), we extract and test the pure-Python
@@ -9,18 +9,14 @@ available in the Modal cloud environment), we extract and test the pure-Python
 the full module.
 """
 
-import sys
+import io
 import os
 import csv
-import io
+import sys
 import types
 import textwrap
-from dataclasses import dataclass, asdict, field
 from typing import Dict, Any, List, Tuple
-
-# ---------------------------------------------------------------------------
-# Re-create the parsing logic locally so tests can run without ``modal``
-# ---------------------------------------------------------------------------
+from dataclasses import dataclass, asdict, field
 
 
 @dataclass
@@ -118,10 +114,6 @@ def parse_ncu_csv(csv_text: str, gpu_mem_bw_gbs: float = 0.0) -> List[Dict[str, 
         results.append(asdict(m))
     return results
 
-
-# ---------------------------------------------------------------------------
-# Sample ncu --csv output (simplified)
-# ---------------------------------------------------------------------------
 
 SAMPLE_NCU_CSV = '''"ID","Process ID","Process Name","Host Name","Kernel Name","Context","Stream","Section Name","Metric Name","Metric Unit","Metric Value"
 "0","1234","kernel","localhost","vectorAdd(float*, float*, float*, int)","1","7","GPU Speed Of Light Throughput","sm__throughput.avg.pct_of_peak_sustained_elapsed","%","42.5"

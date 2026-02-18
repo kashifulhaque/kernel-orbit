@@ -112,7 +112,7 @@ int main()
   free(h_b);
   free(h_c);
 
-  printf("\n✅ Vector addition completed successfully!\n");
+  printf("Vector addition completed successfully!\n");
 
   return 0;
 }

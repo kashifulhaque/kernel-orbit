@@ -5,154 +5,154 @@ import { KernelResult } from './types';
  * Manages the Results Panel webview
  */
 export class ResultsPanel {
-  public static currentPanel: ResultsPanel | undefined;
+    public static currentPanel: ResultsPanel | undefined;
 
-  private readonly _panel: vscode.WebviewPanel;
-  private readonly _extensionUri: vscode.Uri;
-  private _disposables: vscode.Disposable[] = [];
+    private readonly _panel: vscode.WebviewPanel;
+    private readonly _extensionUri: vscode.Uri;
+    private _disposables: vscode.Disposable[] = [];
 
-  private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
-    this._panel = panel;
-    this._extensionUri = extensionUri;
+    private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
+        this._panel = panel;
+        this._extensionUri = extensionUri;
 
-    this._panel.webview.html = this._getHtmlContent(null);
+        this._panel.webview.html = this._getHtmlContent(null);
 
-    this._panel.webview.onDidReceiveMessage(
-      message => this._handleMessage(message),
-      null,
-      this._disposables
-    );
+        this._panel.webview.onDidReceiveMessage(
+            message => this._handleMessage(message),
+            null,
+            this._disposables
+        );
 
-    this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
-  }
-
-  /**
-   * Create or show the results panel
-   */
-  public static createOrShow(extensionUri: vscode.Uri): ResultsPanel {
-    const column = vscode.window.activeTextEditor
-      ? vscode.window.activeTextEditor.viewColumn
-      : undefined;
-
-    if (ResultsPanel.currentPanel) {
-      ResultsPanel.currentPanel._panel.reveal(column);
-      return ResultsPanel.currentPanel;
+        this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
     }
 
-    const panel = vscode.window.createWebviewPanel(
-      'modalKernelResults',
-      'Results',
-      column || vscode.ViewColumn.Two,
-      {
-        enableScripts: true,
-        retainContextWhenHidden: true,
-        localResourceRoots: [extensionUri]
-      }
-    );
+    /**
+     * Create or show the results panel
+     */
+    public static createOrShow(extensionUri: vscode.Uri): ResultsPanel {
+        const column = vscode.window.activeTextEditor
+            ? vscode.window.activeTextEditor.viewColumn
+            : undefined;
 
-    ResultsPanel.currentPanel = new ResultsPanel(panel, extensionUri);
-    return ResultsPanel.currentPanel;
-  }
+        if (ResultsPanel.currentPanel) {
+            ResultsPanel.currentPanel._panel.reveal(column);
+            return ResultsPanel.currentPanel;
+        }
 
-  /**
-   * Update results display
-   */
-  public updateResults(result: KernelResult, fileName?: string) {
-    this._panel.webview.html = this._getHtmlContent(result, fileName);
-  }
+        const panel = vscode.window.createWebviewPanel(
+            'modalKernelResults',
+            'Results',
+            column || vscode.ViewColumn.Two,
+            {
+                enableScripts: true,
+                retainContextWhenHidden: true,
+                localResourceRoots: [extensionUri]
+            }
+        );
 
-  /**
-   * Show loading state
-   */
-  public showLoading(message: string = 'Running kernel...') {
-    this._panel.webview.html = this._getLoadingHtml(message);
-  }
-
-  /**
-   * Show error state
-   */
-  public showError(error: string) {
-    this._panel.webview.html = this._getErrorHtml(error);
-  }
-
-  private _handleMessage(message: any) {
-    switch (message.command) {
-      case 'export':
-        this._exportResults(message.format, message.data);
-        break;
-      case 'copyToClipboard':
-        vscode.env.clipboard.writeText(message.text);
-        vscode.window.showInformationMessage('Copied to clipboard!');
-        break;
+        ResultsPanel.currentPanel = new ResultsPanel(panel, extensionUri);
+        return ResultsPanel.currentPanel;
     }
-  }
 
-  private async _exportResults(format: string, data: any) {
-    const options: vscode.SaveDialogOptions = {
-      defaultUri: vscode.Uri.file(`kernel_results.${format}`),
-      filters: {
-        'JSON': ['json'],
-        'CSV': ['csv'],
-        'Markdown': ['md']
-      }
-    };
-
-    const uri = await vscode.window.showSaveDialog(options);
-    if (uri) {
-      let content: string;
-      switch (format) {
-        case 'csv':
-          content = this._toCSV(data);
-          break;
-        case 'md':
-          content = this._toMarkdown(data);
-          break;
-        default:
-          content = JSON.stringify(data, null, 2);
-      }
-
-      await vscode.workspace.fs.writeFile(uri, Buffer.from(content, 'utf-8'));
-      vscode.window.showInformationMessage(`Results exported to ${uri.fsPath}`);
+    /**
+     * Update results display
+     */
+    public updateResults(result: KernelResult, fileName?: string) {
+        this._panel.webview.html = this._getHtmlContent(result, fileName);
     }
-  }
 
-  /**
-   * Safely format a number with toFixed, handling undefined/null values
-   */
-  private _safeFixed(value: number | undefined | null, decimals: number = 2): string {
-    if (value === undefined || value === null || isNaN(value)) {
-      return '0';
+    /**
+     * Show loading state
+     */
+    public showLoading(message: string = 'Running kernel...') {
+        this._panel.webview.html = this._getLoadingHtml(message);
     }
-    return value.toFixed(decimals);
-  }
 
-  private _toCSV(data: KernelResult): string {
-    const headers = [
-      'GPU', 'Kernel Type', 'Execution Time (ms)', 'Std Dev (ms)',
-      'Min (ms)', 'Max (ms)', 'Compilation (ms)', 'Memory Used (MB)',
-      'Peak Memory (MB)', 'Temperature (C)', 'Power (W)', 'Successful'
-    ];
+    /**
+     * Show error state
+     */
+    public showError(error: string) {
+        this._panel.webview.html = this._getErrorHtml(error);
+    }
 
-    const values = [
-      data.gpuName || '',
-      data.kernelType || '',
-      this._safeFixed(data.executionTimeMs, 3),
-      this._safeFixed(data.executionTimeStdMs, 3),
-      this._safeFixed(data.minExecutionTimeMs, 3),
-      this._safeFixed(data.maxExecutionTimeMs, 3),
-      this._safeFixed(data.compilationTimeMs, 3),
-      this._safeFixed(data.gpuMemoryUsedMb, 2),
-      this._safeFixed(data.peakMemoryMb, 2),
-      (data.gpuTemperatureC ?? 0).toString(),
-      this._safeFixed(data.gpuPowerDrawW, 1),
-      (data.successful ?? false).toString()
-    ];
+    private _handleMessage(message: any) {
+        switch (message.command) {
+            case 'export':
+                this._exportResults(message.format, message.data);
+                break;
+            case 'copyToClipboard':
+                vscode.env.clipboard.writeText(message.text);
+                vscode.window.showInformationMessage('Copied to clipboard!');
+                break;
+        }
+    }
 
-    return headers.join(',') + '\n' + values.join(',');
-  }
+    private async _exportResults(format: string, data: any) {
+        const options: vscode.SaveDialogOptions = {
+            defaultUri: vscode.Uri.file(`kernel_results.${format}`),
+            filters: {
+                'JSON': ['json'],
+                'CSV': ['csv'],
+                'Markdown': ['md']
+            }
+        };
 
-  private _toMarkdown(data: KernelResult): string {
-    return `# Kernel Execution Results
+        const uri = await vscode.window.showSaveDialog(options);
+        if (uri) {
+            let content: string;
+            switch (format) {
+                case 'csv':
+                    content = this._toCSV(data);
+                    break;
+                case 'md':
+                    content = this._toMarkdown(data);
+                    break;
+                default:
+                    content = JSON.stringify(data, null, 2);
+            }
+
+            await vscode.workspace.fs.writeFile(uri, Buffer.from(content, 'utf-8'));
+            vscode.window.showInformationMessage(`Results exported to ${uri.fsPath}`);
+        }
+    }
+
+    /**
+     * Safely format a number with toFixed, handling undefined/null values
+     */
+    private _safeFixed(value: number | undefined | null, decimals: number = 2): string {
+        if (value === undefined || value === null || isNaN(value)) {
+            return '0';
+        }
+        return value.toFixed(decimals);
+    }
+
+    private _toCSV(data: KernelResult): string {
+        const headers = [
+            'GPU', 'Kernel Type', 'Execution Time (ms)', 'Std Dev (ms)',
+            'Min (ms)', 'Max (ms)', 'Compilation (ms)', 'Memory Used (MB)',
+            'Peak Memory (MB)', 'Temperature (C)', 'Power (W)', 'Successful'
+        ];
+
+        const values = [
+            data.gpuName || '',
+            data.kernelType || '',
+            this._safeFixed(data.executionTimeMs, 3),
+            this._safeFixed(data.executionTimeStdMs, 3),
+            this._safeFixed(data.minExecutionTimeMs, 3),
+            this._safeFixed(data.maxExecutionTimeMs, 3),
+            this._safeFixed(data.compilationTimeMs, 3),
+            this._safeFixed(data.gpuMemoryUsedMb, 2),
+            this._safeFixed(data.peakMemoryMb, 2),
+            (data.gpuTemperatureC ?? 0).toString(),
+            this._safeFixed(data.gpuPowerDrawW, 1),
+            (data.successful ?? false).toString()
+        ];
+
+        return headers.join(',') + '\n' + values.join(',');
+    }
+
+    private _toMarkdown(data: KernelResult): string {
+        return `# Kernel Execution Results
 
 ## GPU Information
 - **GPU**: ${data.gpuName || 'Unknown'}
@@ -186,17 +186,16 @@ ${data.kernelOutput ? `## Kernel Output\n\`\`\`\n${data.kernelOutput}\n\`\`\`` :
 
 ${data.profilerOutput ? `## Profiler Output\n\`\`\`\n${data.profilerOutput}\n\`\`\`` : ''}
 `;
-  }
-
-  private _getHtmlContent(result: KernelResult | null, fileName?: string): string {
-    if (!result) {
-      return this._getEmptyHtml();
     }
 
-    const statusIcon = result.successful ? '✅' : '❌';
-    const statusClass = result.successful ? 'success' : 'error';
+    private _getHtmlContent(result: KernelResult | null, fileName?: string): string {
+        if (!result) {
+            return this._getEmptyHtml();
+        }
 
-    return `<!DOCTYPE html>
+        const statusClass = result.successful ? 'success' : 'error';
+
+        return `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -404,7 +403,7 @@ ${data.profilerOutput ? `## Profiler Output\n\`\`\`\n${data.profilerOutput}\n\`\
     <div class="header">
         <div>
             <h1>
-                ${statusIcon} Kernel Results
+                Kernel Results
                 <span class="status-badge ${statusClass}">${result.successful ? 'Success' : 'Failed'}</span>
             </h1>
             ${fileName ? `<div class="file-info">${fileName}</div>` : ''}
@@ -556,39 +555,39 @@ ${data.profilerOutput ? `## Profiler Output\n\`\`\`\n${data.profilerOutput}\n\`\
     </script>
 </body>
 </html>`;
-  }
-
-  private _renderTimingBars(samples: number[]): string {
-    if (!samples || samples.length === 0) {
-      return '';
     }
 
-    const validSamples = samples.filter(t => t !== undefined && t !== null && !isNaN(t));
-    if (validSamples.length === 0) {
-      return '';
+    private _renderTimingBars(samples: number[]): string {
+        if (!samples || samples.length === 0) {
+            return '';
+        }
+
+        const validSamples = samples.filter(t => t !== undefined && t !== null && !isNaN(t));
+        if (validSamples.length === 0) {
+            return '';
+        }
+
+        const maxTime = Math.max(...validSamples);
+        const bars = validSamples.map(time => {
+            const height = maxTime > 0 ? (time / maxTime) * 80 : 0;
+            const timeStr = this._safeFixed(time, 2);
+            return `<div class="timing-bar" style="height: ${height}px;" title="${timeStr} ms"></div>`;
+        });
+
+        return bars.join('');
     }
 
-    const maxTime = Math.max(...validSamples);
-    const bars = validSamples.map(time => {
-      const height = maxTime > 0 ? (time / maxTime) * 80 : 0;
-      const timeStr = this._safeFixed(time, 2);
-      return `<div class="timing-bar" style="height: ${height}px;" title="${timeStr} ms"></div>`;
-    });
+    private _escapeHtml(text: string): string {
+        return text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
 
-    return bars.join('');
-  }
-
-  private _escapeHtml(text: string): string {
-    return text
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
-  }
-
-  private _getLoadingHtml(message: string): string {
-    return `<!DOCTYPE html>
+    private _getLoadingHtml(message: string): string {
+        return `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -629,10 +628,10 @@ ${data.profilerOutput ? `## Profiler Output\n\`\`\`\n${data.profilerOutput}\n\`\
     </div>
 </body>
 </html>`;
-  }
+    }
 
-  private _getErrorHtml(error: string): string {
-    return `<!DOCTYPE html>
+    private _getErrorHtml(error: string): string {
+        return `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -673,10 +672,10 @@ ${data.profilerOutput ? `## Profiler Output\n\`\`\`\n${data.profilerOutput}\n\`\
     </div>
 </body>
 </html>`;
-  }
+    }
 
-  private _getEmptyHtml(): string {
-    return `<!DOCTYPE html>
+    private _getEmptyHtml(): string {
+        return `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -713,17 +712,17 @@ ${data.profilerOutput ? `## Profiler Output\n\`\`\`\n${data.profilerOutput}\n\`\
     </div>
 </body>
 </html>`;
-  }
-
-  public dispose() {
-    ResultsPanel.currentPanel = undefined;
-    this._panel.dispose();
-
-    while (this._disposables.length) {
-      const disposable = this._disposables.pop();
-      if (disposable) {
-        disposable.dispose();
-      }
     }
-  }
+
+    public dispose() {
+        ResultsPanel.currentPanel = undefined;
+        this._panel.dispose();
+
+        while (this._disposables.length) {
+            const disposable = this._disposables.pop();
+            if (disposable) {
+                disposable.dispose();
+            }
+        }
+    }
 }

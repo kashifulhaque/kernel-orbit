@@ -25,11 +25,6 @@ if sys.platform == "win32":
         sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 
-# ---------------------------------------------------------------------------
-# Dataclasses
-# ---------------------------------------------------------------------------
-
-
 @dataclass
 class GpuTimelineSample:
     """A single NVML sample taken during kernel execution."""
@@ -76,10 +71,6 @@ class ProfilingResult:
     gpu_power_limit_w: float = 0.0  # TDP for reference line
 
 
-# ---------------------------------------------------------------------------
-# Docker images  (reuse the same base images from kernel_runner.py)
-# ---------------------------------------------------------------------------
-
 cuda_image = (
     modal.Image.from_registry(
         "nvidia/cuda:13.1.1-devel-ubuntu24.04", add_python="3.12"
@@ -98,12 +89,7 @@ triton_image = modal.Image.debian_slim(python_version="3.12").uv_pip_install(
 
 app = modal.App("kernel-orbit-profiler")
 
-
-# ---------------------------------------------------------------------------
-# GPU info helper  (same as kernel_runner.py)
-# ---------------------------------------------------------------------------
-
-
+# helpers
 def get_gpu_info() -> Dict[str, Any]:
     """Get detailed GPU information using nvidia-ml-py."""
     try:
@@ -134,10 +120,6 @@ def get_gpu_info() -> Dict[str, Any]:
     except Exception as e:
         return {"error": str(e), "name": "Unknown", "compute_capability": "Unknown"}
 
-
-# ---------------------------------------------------------------------------
-# NCU CSV parser
-# ---------------------------------------------------------------------------
 
 # Mapping from ncu metric names → our fields
 _NCU_METRIC_MAP = {

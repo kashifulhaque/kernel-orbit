@@ -69,9 +69,6 @@ Local workspace files are synced to the remote container before each cell execut
 
 ## Roadmap
 
-- [ ] Tab completion / intellisense for remote objects
-- [ ] Variable inspector (browse remote namespace)
-- [ ] `?` / `??` introspection (docstrings)
 - [ ] `input()` support (`input_request` / `input_reply`)
 - [ ] Top-level `await` (async cell execution)
 - [ ] More IPython magics (`%cd`, `%pwd`, `%env`, `%who`)
@@ -79,7 +76,10 @@ Local workspace files are synced to the remote container before each cell execut
 - [ ] `ipywidgets` support
 - [ ] `IPython.display.clear_output()`
 - [ ] `%%bash`, `%%html`, `%%javascript` cell magics
-- [ ] Kernel info request (language, version metadata)
+<!-- - [ ] Tab completion / intellisense for remote objects -->
+<!-- - [ ] Variable inspector (browse remote namespace) -->
+<!-- - [ ] `?` / `??` introspection (docstrings) -->
+<!-- - [ ] Kernel info request (language, version metadata) -->
 
 ## Development
 

@@ -22,7 +22,7 @@ if sys.platform == "win32":
 
 def get_triton_image():
   """Create a Modal image with Triton and PyTorch."""
-  return modal.Image.debian_slim(python_version="3.11").pip_install(
+  return modal.Image.debian_slim(python_version="3.12").uv_pip_install(
     "torch",
     "triton",
     "numpy",

@@ -264,10 +264,10 @@ def benchmark():
     # Verify correctness
     torch_output = torch.matmul(a, b)
     if torch.allclose(triton_output, torch_output, atol=1e-2, rtol=0):
-      print("  ✅ Verification: PASSED")
+      print("  Verification: PASSED")
     else:
       max_diff = (triton_output - torch_output).abs().max()
-      print(f"  ⚠️ Verification: max diff = {max_diff}")
+      print(f"  Verification: max diff = {max_diff}")
 
     # Calculate TFLOPS
     flops = 2 * M * N * K
@@ -279,7 +279,7 @@ def benchmark():
     print(f"  Ratio:   {torch_time / triton_time:.2f}x")
 
   print()
-  print("✅ Benchmark completed!")
+  print("Benchmark completed!")
 
   return triton_output
 

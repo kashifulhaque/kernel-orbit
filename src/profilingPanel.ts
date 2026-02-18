@@ -5,172 +5,172 @@ import { ProfilingResult, KernelProfilingMetrics } from './types';
  * Manages the Profiling Panel webview — a dedicated panel for ncu / torch.profiler results.
  */
 export class ProfilingPanel {
-  public static currentPanel: ProfilingPanel | undefined;
+    public static currentPanel: ProfilingPanel | undefined;
 
-  private readonly _panel: vscode.WebviewPanel;
-  private readonly _extensionUri: vscode.Uri;
-  private _disposables: vscode.Disposable[] = [];
-  private _lastResult: ProfilingResult | null = null;
+    private readonly _panel: vscode.WebviewPanel;
+    private readonly _extensionUri: vscode.Uri;
+    private _disposables: vscode.Disposable[] = [];
+    private _lastResult: ProfilingResult | null = null;
 
-  private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
-    this._panel = panel;
-    this._extensionUri = extensionUri;
+    private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
+        this._panel = panel;
+        this._extensionUri = extensionUri;
 
-    this._panel.webview.html = this._getEmptyHtml();
+        this._panel.webview.html = this._getEmptyHtml();
 
-    this._panel.webview.onDidReceiveMessage(
-      message => this._handleMessage(message),
-      null,
-      this._disposables
-    );
+        this._panel.webview.onDidReceiveMessage(
+            message => this._handleMessage(message),
+            null,
+            this._disposables
+        );
 
-    this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
-  }
-
-  public static createOrShow(extensionUri: vscode.Uri): ProfilingPanel {
-    const column = vscode.window.activeTextEditor
-      ? vscode.window.activeTextEditor.viewColumn
-      : undefined;
-
-    if (ProfilingPanel.currentPanel) {
-      ProfilingPanel.currentPanel._panel.reveal(column);
-      return ProfilingPanel.currentPanel;
+        this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
     }
 
-    const panel = vscode.window.createWebviewPanel(
-      'modalKernelProfiling',
-      'Profiling',
-      column || vscode.ViewColumn.Two,
-      {
-        enableScripts: true,
-        retainContextWhenHidden: true,
-        localResourceRoots: [extensionUri]
-      }
-    );
+    public static createOrShow(extensionUri: vscode.Uri): ProfilingPanel {
+        const column = vscode.window.activeTextEditor
+            ? vscode.window.activeTextEditor.viewColumn
+            : undefined;
 
-    ProfilingPanel.currentPanel = new ProfilingPanel(panel, extensionUri);
-    return ProfilingPanel.currentPanel;
-  }
+        if (ProfilingPanel.currentPanel) {
+            ProfilingPanel.currentPanel._panel.reveal(column);
+            return ProfilingPanel.currentPanel;
+        }
 
-  public updateResults(result: ProfilingResult, fileName?: string) {
-    this._lastResult = result;
-    this._panel.webview.html = this._getHtmlContent(result, fileName);
-  }
+        const panel = vscode.window.createWebviewPanel(
+            'modalKernelProfiling',
+            'Profiling',
+            column || vscode.ViewColumn.Two,
+            {
+                enableScripts: true,
+                retainContextWhenHidden: true,
+                localResourceRoots: [extensionUri]
+            }
+        );
 
-  public showLoading(message: string = 'Profiling kernel...') {
-    this._panel.webview.html = this._getLoadingHtml(message);
-  }
-
-  public showError(error: string) {
-    this._panel.webview.html = this._getErrorHtml(error);
-  }
-
-  // ---- message handling ----
-
-  private _handleMessage(message: any) {
-    switch (message.command) {
-      case 'export':
-        this._exportResults(message.format);
-        break;
-      case 'copyToClipboard':
-        vscode.env.clipboard.writeText(message.text);
-        vscode.window.showInformationMessage('Copied to clipboard!');
-        break;
+        ProfilingPanel.currentPanel = new ProfilingPanel(panel, extensionUri);
+        return ProfilingPanel.currentPanel;
     }
-  }
 
-  private async _exportResults(format: string) {
-    if (!this._lastResult) { return; }
-
-    const uri = await vscode.window.showSaveDialog({
-      defaultUri: vscode.Uri.file(`profiling_results.${format}`),
-      filters: {
-        'JSON': ['json'],
-        'CSV': ['csv']
-      }
-    });
-
-    if (uri) {
-      let content: string;
-      if (format === 'csv') {
-        content = this._toCSV(this._lastResult);
-      } else {
-        content = JSON.stringify(this._lastResult, null, 2);
-      }
-
-      await vscode.workspace.fs.writeFile(uri, Buffer.from(content, 'utf-8'));
-      vscode.window.showInformationMessage(`Profiling results exported to ${uri.fsPath}`);
+    public updateResults(result: ProfilingResult, fileName?: string) {
+        this._lastResult = result;
+        this._panel.webview.html = this._getHtmlContent(result, fileName);
     }
-  }
 
-  private _toCSV(result: ProfilingResult): string {
-    const headers = [
-      'Kernel Name', 'Execution Time (μs)', 'SM Efficiency (%)',
-      'Memory Throughput (GB/s)', 'Occupancy (%)', 'Registers/Thread',
-      'Shared Memory (bytes)', 'Limiting Factor'
-    ];
+    public showLoading(message: string = 'Profiling kernel...') {
+        this._panel.webview.html = this._getLoadingHtml(message);
+    }
 
-    const rows = (result.kernelMetrics || []).map((m: KernelProfilingMetrics) => [
-      m.kernelName || '',
-      (m.executionTimeUs ?? 0).toFixed(2),
-      (m.smEfficiencyPercent ?? 0) < 0 ? 'N/A' : (m.smEfficiencyPercent ?? 0).toFixed(1),
-      (m.memoryThroughputGbs ?? 0) < 0 ? 'N/A' : (m.memoryThroughputGbs ?? 0).toFixed(1),
-      (m.achievedOccupancyPercent ?? 0).toFixed(1),
-      (m.registersPerThread ?? 0).toString(),
-      (m.sharedMemoryBytes ?? 0).toString(),
-      m.limitingFactor || 'unknown'
-    ].join(','));
+    public showError(error: string) {
+        this._panel.webview.html = this._getErrorHtml(error);
+    }
 
-    return headers.join(',') + '\n' + rows.join('\n');
-  }
+    // ---- message handling ----
 
-  // ---- helpers ----
+    private _handleMessage(message: any) {
+        switch (message.command) {
+            case 'export':
+                this._exportResults(message.format);
+                break;
+            case 'copyToClipboard':
+                vscode.env.clipboard.writeText(message.text);
+                vscode.window.showInformationMessage('Copied to clipboard!');
+                break;
+        }
+    }
 
-  private _safeFixed(value: number | undefined | null, decimals: number = 2): string {
-    if (value === undefined || value === null || isNaN(value)) { return '0'; }
-    return value.toFixed(decimals);
-  }
+    private async _exportResults(format: string) {
+        if (!this._lastResult) { return; }
 
-  private _escapeHtml(text: string): string {
-    return text
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
-  }
+        const uri = await vscode.window.showSaveDialog({
+            defaultUri: vscode.Uri.file(`profiling_results.${format}`),
+            filters: {
+                'JSON': ['json'],
+                'CSV': ['csv']
+            }
+        });
 
-  private _colorClass(value: number, lowThresh: number = 30, highThresh: number = 60): string {
-    if (value < 0) { return 'metric-na'; }
-    if (value < lowThresh) { return 'metric-red'; }
-    if (value < highThresh) { return 'metric-yellow'; }
-    return 'metric-green';
-  }
+        if (uri) {
+            let content: string;
+            if (format === 'csv') {
+                content = this._toCSV(this._lastResult);
+            } else {
+                content = JSON.stringify(this._lastResult, null, 2);
+            }
 
-  /** Format a block/grid dim tuple, skipping trailing 1s for readability. */
-  private _formatDims(dims: number[]): string {
-    if (!dims || dims.length === 0) { return '—'; }
-    // All zeros means unknown
-    if (dims.every(d => d === 0)) { return '—'; }
-    // Trim trailing 1s for display: (64,64,1) → "64×64"
-    let significant = dims.length;
-    while (significant > 1 && dims[significant - 1] === 1) { significant--; }
-    return dims.slice(0, significant).join('×');
-  }
+            await vscode.workspace.fs.writeFile(uri, Buffer.from(content, 'utf-8'));
+            vscode.window.showInformationMessage(`Profiling results exported to ${uri.fsPath}`);
+        }
+    }
 
-  /** Generate the Performance Timeline HTML section with 4 chart canvases. */
-  private _getTimelineHtml(result: ProfilingResult): string {
-    const samples = (result as any).timelineSamples || [];
-    if (!samples || samples.length < 2) { return ''; }
+    private _toCSV(result: ProfilingResult): string {
+        const headers = [
+            'Kernel Name', 'Execution Time (μs)', 'SM Efficiency (%)',
+            'Memory Throughput (GB/s)', 'Occupancy (%)', 'Registers/Thread',
+            'Shared Memory (bytes)', 'Limiting Factor'
+        ];
 
-    const peakBw = (result as any).gpuPeakMemoryBwGbs ?? 0;
-    const powerLimit = (result as any).gpuPowerLimitW ?? 0;
+        const rows = (result.kernelMetrics || []).map((m: KernelProfilingMetrics) => [
+            m.kernelName || '',
+            (m.executionTimeUs ?? 0).toFixed(2),
+            (m.smEfficiencyPercent ?? 0) < 0 ? 'N/A' : (m.smEfficiencyPercent ?? 0).toFixed(1),
+            (m.memoryThroughputGbs ?? 0) < 0 ? 'N/A' : (m.memoryThroughputGbs ?? 0).toFixed(1),
+            (m.achievedOccupancyPercent ?? 0).toFixed(1),
+            (m.registersPerThread ?? 0).toString(),
+            (m.sharedMemoryBytes ?? 0).toString(),
+            m.limitingFactor || 'unknown'
+        ].join(','));
 
-    // Find the total duration to show in the header
-    const lastTs = samples[samples.length - 1].timestampMs ?? 0;
-    const durationStr = lastTs > 1000 ? `${(lastTs / 1000).toFixed(1)}s` : `${lastTs.toFixed(0)}ms`;
+        return headers.join(',') + '\n' + rows.join('\n');
+    }
 
-    return `
+    // ---- helpers ----
+
+    private _safeFixed(value: number | undefined | null, decimals: number = 2): string {
+        if (value === undefined || value === null || isNaN(value)) { return '0'; }
+        return value.toFixed(decimals);
+    }
+
+    private _escapeHtml(text: string): string {
+        return text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    private _colorClass(value: number, lowThresh: number = 30, highThresh: number = 60): string {
+        if (value < 0) { return 'metric-na'; }
+        if (value < lowThresh) { return 'metric-red'; }
+        if (value < highThresh) { return 'metric-yellow'; }
+        return 'metric-green';
+    }
+
+    /** Format a block/grid dim tuple, skipping trailing 1s for readability. */
+    private _formatDims(dims: number[]): string {
+        if (!dims || dims.length === 0) { return '—'; }
+        // All zeros means unknown
+        if (dims.every(d => d === 0)) { return '—'; }
+        // Trim trailing 1s for display: (64,64,1) → "64×64"
+        let significant = dims.length;
+        while (significant > 1 && dims[significant - 1] === 1) { significant--; }
+        return dims.slice(0, significant).join('×');
+    }
+
+    /** Generate the Performance Timeline HTML section with 4 chart canvases. */
+    private _getTimelineHtml(result: ProfilingResult): string {
+        const samples = (result as any).timelineSamples || [];
+        if (!samples || samples.length < 2) { return ''; }
+
+        const peakBw = (result as any).gpuPeakMemoryBwGbs ?? 0;
+        const powerLimit = (result as any).gpuPowerLimitW ?? 0;
+
+        // Find the total duration to show in the header
+        const lastTs = samples[samples.length - 1].timestampMs ?? 0;
+        const durationStr = lastTs > 1000 ? `${(lastTs / 1000).toFixed(1)}s` : `${lastTs.toFixed(0)}ms`;
+
+        return `
     <!-- Performance Timeline -->
     <div class="timeline-section">
         <h2>Performance Timeline <span class="sample-count">${samples.length} samples · ${durationStr}</span></h2>
@@ -307,41 +307,40 @@ export class ProfilingPanel {
         window.addEventListener('resize', renderAll);
     })();
     </script>`;
-  }
+    }
 
-  // ---- HTML generators ----
+    // ---- HTML generators ----
 
-  private _getHtmlContent(result: ProfilingResult, fileName?: string): string {
-    if (!result) { return this._getEmptyHtml(); }
+    private _getHtmlContent(result: ProfilingResult, fileName?: string): string {
+        if (!result) { return this._getEmptyHtml(); }
 
-    const statusIcon = result.successful ? '✅' : '❌';
-    const statusClass = result.successful ? 'success' : 'error';
+        const statusClass = result.successful ? 'success' : 'error';
 
-    // Headline metrics from first kernel (or aggregated)
-    const metrics = result.kernelMetrics || [];
-    const first = metrics.length > 0 ? metrics[0] as any : null;
+        // Headline metrics from first kernel (or aggregated)
+        const metrics = result.kernelMetrics || [];
+        const first = metrics.length > 0 ? metrics[0] as any : null;
 
-    const execTimeDisplay = first ? this._safeFixed(first.executionTimeUs, 2) : '—';
-    const smEffRaw = first?.smEfficiencyPercent ?? 0;
-    const memTpRaw = first?.memoryThroughputGbs ?? 0;
-    const smEffDisplay = (smEffRaw < 0) ? 'N/A' : (first ? this._safeFixed(smEffRaw, 1) : '—');
-    const memTpDisplay = (memTpRaw < 0) ? 'N/A' : (first ? this._safeFixed(memTpRaw, 1) : '—');
-    const occDisplay = first ? this._safeFixed(first.achievedOccupancyPercent, 1) : '—';
+        const execTimeDisplay = first ? this._safeFixed(first.executionTimeUs, 2) : '—';
+        const smEffRaw = first?.smEfficiencyPercent ?? 0;
+        const memTpRaw = first?.memoryThroughputGbs ?? 0;
+        const smEffDisplay = (smEffRaw < 0) ? 'N/A' : (first ? this._safeFixed(smEffRaw, 1) : '—');
+        const memTpDisplay = (memTpRaw < 0) ? 'N/A' : (first ? this._safeFixed(memTpRaw, 1) : '—');
+        const occDisplay = first ? this._safeFixed(first.achievedOccupancyPercent, 1) : '—';
 
-    const smClass = (smEffRaw < 0) ? 'metric-na' : (first ? this._colorClass(smEffRaw) : '');
-    const occClass = first ? this._colorClass(first.achievedOccupancyPercent ?? 0) : '';
+        const smClass = (smEffRaw < 0) ? 'metric-na' : (first ? this._colorClass(smEffRaw) : '');
+        const occClass = first ? this._colorClass(first.achievedOccupancyPercent ?? 0) : '';
 
-    const isFallback = result.profilingToolUsed === 'nvcc_fallback';
+        const isFallback = result.profilingToolUsed === 'nvcc_fallback';
 
-    const kernelTableRows = metrics.map((m: any, i: number) => {
-      const smEff = m.smEfficiencyPercent ?? 0;
-      const memTp = m.memoryThroughputGbs ?? 0;
-      const smDisplay = smEff < 0 ? '<span class="metric-na">N/A</span>' : `${this._safeFixed(smEff, 1)}%`;
-      const memDisplay = memTp < 0 ? '<span class="metric-na">N/A</span>' : `${this._safeFixed(memTp, 1)} GB/s`;
-      const smCls = smEff < 0 ? '' : this._colorClass(smEff);
-      const blockStr = Array.isArray(m.blockSize) ? this._formatDims(m.blockSize) : (m.blockSize ?? '—');
-      const gridStr = Array.isArray(m.gridSize) ? this._formatDims(m.gridSize) : (m.gridSize ?? '—');
-      return `
+        const kernelTableRows = metrics.map((m: any, i: number) => {
+            const smEff = m.smEfficiencyPercent ?? 0;
+            const memTp = m.memoryThroughputGbs ?? 0;
+            const smDisplay = smEff < 0 ? '<span class="metric-na">N/A</span>' : `${this._safeFixed(smEff, 1)}%`;
+            const memDisplay = memTp < 0 ? '<span class="metric-na">N/A</span>' : `${this._safeFixed(memTp, 1)} GB/s`;
+            const smCls = smEff < 0 ? '' : this._colorClass(smEff);
+            const blockStr = Array.isArray(m.blockSize) ? this._formatDims(m.blockSize) : (m.blockSize ?? '—');
+            const gridStr = Array.isArray(m.gridSize) ? this._formatDims(m.gridSize) : (m.gridSize ?? '—');
+            return `
       <tr>
         <td>${i + 1}</td>
         <td class="kernel-name">${this._escapeHtml(m.kernelName || 'unknown')}</td>
@@ -355,9 +354,9 @@ export class ProfilingPanel {
         <td>${m.limitingFactor || 'unknown'}</td>
       </tr>
     `;
-    }).join('');
+        }).join('');
 
-    return `<!DOCTYPE html>
+        return `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -522,7 +521,7 @@ export class ProfilingPanel {
     <div class="header">
         <div>
             <h1>
-                ${statusIcon} Profiling Results
+                Profiling Results
                 <span class="status-badge ${statusClass}">${result.successful ? 'Success' : 'Failed'}</span>
                 <span class="tool-badge${isFallback ? ' fallback' : ''}">${isFallback ? 'nvcc fallback' : (result.profilingToolUsed || '—')}</span>
             </h1>
@@ -641,10 +640,10 @@ export class ProfilingPanel {
     </script>
 </body>
 </html>`;
-  }
+    }
 
-  private _getLoadingHtml(message: string): string {
-    return `<!DOCTYPE html>
+    private _getLoadingHtml(message: string): string {
+        return `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -680,10 +679,10 @@ export class ProfilingPanel {
     </div>
 </body>
 </html>`;
-  }
+    }
 
-  private _getErrorHtml(error: string): string {
-    return `<!DOCTYPE html>
+    private _getErrorHtml(error: string): string {
+        return `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -715,10 +714,10 @@ export class ProfilingPanel {
     </div>
 </body>
 </html>`;
-  }
+    }
 
-  private _getEmptyHtml(): string {
-    return `<!DOCTYPE html>
+    private _getEmptyHtml(): string {
+        return `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -746,14 +745,14 @@ export class ProfilingPanel {
     </div>
 </body>
 </html>`;
-  }
-
-  public dispose() {
-    ProfilingPanel.currentPanel = undefined;
-    this._panel.dispose();
-    while (this._disposables.length) {
-      const d = this._disposables.pop();
-      if (d) { d.dispose(); }
     }
-  }
+
+    public dispose() {
+        ProfilingPanel.currentPanel = undefined;
+        this._panel.dispose();
+        while (this._disposables.length) {
+            const d = this._disposables.pop();
+            if (d) { d.dispose(); }
+        }
+    }
 }

@@ -170,7 +170,7 @@ int main()
   free(h_B);
   free(h_C);
 
-  printf("\n✅ Matrix multiplication completed successfully!\n");
+  printf("Matrix multiplication completed successfully!\n");
 
   return 0;
 }

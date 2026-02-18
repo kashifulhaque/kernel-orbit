@@ -107,10 +107,10 @@ def benchmark():
   # Verify correctness
   expected = x + y
   if torch.allclose(output, expected):
-    print("✅ Verification: PASSED")
+    print("Verification: PASSED")
   else:
     max_diff = (output - expected).abs().max()
-    print(f"❌ Verification: FAILED (max diff: {max_diff})")
+    print(f"Verification: FAILED (max diff: {max_diff})")
 
   print()
   print("Timing Results:")
